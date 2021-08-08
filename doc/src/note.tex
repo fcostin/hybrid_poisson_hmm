@@ -1,0 +1,133 @@
+\documentclass[twoside, 11pt]{article}
+
+\usepackage[preprint]{jmlr2e}
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{mathtools}
+
+% for bayesian network diagrams
+% ref: https://github.com/jluttine/tikz-bayesnet
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{bayesnet}
+
+% ensure sufficient marginspace for todos
+\setlength {\marginparwidth }{2cm}
+\usepackage[obeyFinal]{todonotes}
+% \setuptodonotes{inline}
+
+% define notation for norm and abs that scale nicely.
+% ref: https://tex.stackexchange.com/a/297263
+\let\oldnorm\norm
+\let\norm\undefined
+\DeclarePairedDelimiter\norm{\lVert}{\rVert}
+
+\let\oldabs\abs
+\let\abs\undefined
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}
+
+\DeclarePairedDelimiter\card{\lvert}{\rvert}
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\let\oldgamma\Gamma
+\let\Gamma\undefined
+\DeclareMathOperator*{\Gamma}{Gamma}
+
+\newcommand{\reals}[0] {\mathbb{R}}
+\newcommand{\nonnegint}[0] {\mathbb{N}_{\geq 0}}
+
+
+\begin{document}
+
+% style self-loop edges.
+\tikzset{every loop/.style={min distance=10mm,in=60,out=120,looseness=10}}
+
+
+\author{\name Reuben Fletcher-Costin}
+
+\title{}
+
+\maketitle
+
+\begin{abstract}%
+This paper considers a hybrid hidden Markov model for event counts with an additive Poisson noise term. 
+\end{abstract}
+
+\section{probabilistic model}
+\subsection{Prelude: hidden Markov model}
+
+Consider a first-order hidden Markov model with a hidden state $x_t$ at each time $t=0,\ldots,T$ that generates observable evidence $z_t$ for $t=1,\ldots,T$. We use $z_{1:T}$ to denote $z_1, \ldots, z_T$. Due to the Markov assumptions, the joint distribution of $Z_{1:T}$ and $x_{0:T}$ factorises as
+\begin{equation}
+P(z_{1:T}, x_{0:T}) = P(x_0) \prod_{t=1, \ldots, T} P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
+\end{equation}
+The condition dependence structure of the hidden Markov model is illustrated in Figure \ref{fig:hmm}.
+
+We assume that each hidden state $x_t$ takes values in a finite state space $S = \{ s_1, \ldots, s_N \}$, and that each generated observation $z_t$ is an event count in $\nonnegint$.
+
+% standard hmm
+
+\begin{figure}[H]
+\tikz{
+	% nodes
+	\node[latent] (x) {$x_t$}; %
+	\node[latent,left=of x] (x0) {$x_0$}; %
+	\node[obs,below=of x] (z) {$z_t$}; %
+	% plates
+	\plate {timeplate} {(x) (z)} {$T$};%
+	% edges
+	\edge {x0} {x}
+	\edge {x} {z}
+	% self-loop edges
+	\path[->] (x) edge [loop above] node {$t=1,\ldots,T$; $t-1 \mapsto t$} ();
+}
+\caption{Hidden Markov model}
+\label{fig:hmm}
+\end{figure}
+
+\subsection{Hidden Markov model with additive Poisson noise}
+
+Now consider a hidden Markov model where the event count $z_t$, generated from the hidden state $x_t$, is no longer directly observable. Instead, at each time $t$ we observe an event count $y_t \in \nonnegint$ such that
+\begin{equation}
+y_t = x_t + w_t
+\end{equation}
+where $w_t \in \nonnegint$ is generated from a Poisson distribution with a rate $\lambda > 0$ that does not vary over time. We assume a prior $\Gamma(\alpha, \beta)$ over $\lambda$. The joint probability distribution for this model is assumed to be
+\begin{align}
+& P(y_{1:T}, z_{1:T}, x_{0:T}, w_{1:t}, \lambda, \alpha, \beta) \nonumber \\
+= & P(x_0) P(\alpha, \beta) P(\lambda \mid \alpha, \beta) \prod_{t=1, \ldots, T} P(y_t \mid w_t, z_t) P(w_t \mid \lambda) P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
+\end{align}
+This conditional dependence structure is shown in Figure\ref{fig:hmmpoisson}.
+
+% hmm with additive Poisson noise
+
+\begin{figure}
+\tikz{
+	% nodes
+	\node[obs] (y) {$y_t$}; %
+	\node[latent,above=of y] (z) {$z_t$}; %
+	\node[latent,above left=of y] (w) {$w_t$}; %
+	\node[latent,above=of z] (x) {$x_t$}; %
+	\node[latent,left=of x, xshift=-1cm] (x0) {$x_0$}; %
+
+	\node[latent,left=of w] (lambda) {$\lambda$}; %
+	\node[latent,left=of lambda] (alphabeta) {$\alpha, \beta$}; %
+	% plates
+	\plate {timeplate} {(x) (z) (w) (y)} {$T$};%
+	% edges
+	\edge {x0} {x}
+	\edge {x} {z}
+	\edge {z} {y}
+	\edge {w} {y}
+	\edge {lambda} {w}
+	\edge {alphabeta} {lambda}
+	% self-loop edges
+	\path[->] (x) edge [loop above] node {$t=1,\ldots,T$; $t-1 \mapsto t$} ();
+}
+\caption{Hidden Markov model with Poisson noise}
+\label{fig:hmmpoisson}
+\end{figure}
+
+\subsection{Forward algorithm}
+
+\end{document}
