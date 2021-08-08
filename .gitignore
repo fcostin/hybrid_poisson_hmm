@@ -1,1 +1,9 @@
-/doc/out/*
+/doc/src/*.aux
+/doc/src/*.dvi
+/doc/src/*.pdf
+/doc/src/*.log
+/doc/src/*.out
+/doc/src/*.fls
+/doc/src/*.blg
+/doc/src/*.bbl
+/doc/src/*.fdb_latexmk

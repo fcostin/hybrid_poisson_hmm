@@ -2,6 +2,8 @@
 
 \usepackage[preprint]{jmlr2e}
 
+\usepackage{natbib}
+
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{mathtools}
@@ -129,5 +131,21 @@ This conditional dependence structure is shown in Figure\ref{fig:hmmpoisson}.
 \end{figure}
 
 \subsection{Forward algorithm}
+
+As explained by \citet{rabiner1989tutorial}, \citet*{russell2002artificial}, given a hidden Markov model, there are a number of standard inference tasks we may wish to perform:
+
+\begin{enumerate}
+\item ``filtering'': estimating the posterior distribution at the current time $t=T$ over latent variables given evidence to date $y_{1:t}$
+\item ``smoothing'': estimating the posterior distribution over latent variables given the evience to date at some historical time $t<T$
+\item ``prediction'': estimating the posterior distribution over latent variables at future times $t>T$ given evidence to date
+\item most likely explanation: recovering a trajectory of latent states that is best, in some particular sense (e.g. via the Viterbi algorithm)
+\item estimating or training the parameters of our Markov model (E.g. via the Baum-Welch algorithm, an instance of Expectation Maximisation algorithms).
+\end{enumerate}
+
+We will focus on the first task, ``filtering''.
+
+\subsection{references}
+
+\bibliography{note}
 
 \end{document}

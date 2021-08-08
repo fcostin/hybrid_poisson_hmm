@@ -10,14 +10,16 @@
 # Ensure the docker daemon is running.
 #
 # Ensure your working directory contains this script
-# and directories named src/ and out/ (these will be
-# bind-mounted into the container for build input and
-# build output respectively).
+# and a directory named src/
+# The src directory will be bind-mounted into the
+# container for build input and build output
+# respectively).
 #
 # ./gutenbot.sh pdflatex \
 #	-interaction nonstopmode \
-#	-output-directory /work/out \
-#	src/somefile.tex
+#	somefile.tex
+#
+# where somefile.tex lives inside src/
 
 set -euo pipefail
 
@@ -29,8 +31,8 @@ shift 1 # pop $1 from $@; we defer tail of $@ to entrypoint
 
 docker run --rm \
   --name gutenbot \
+  --workdir /work/src \
   --mount type=bind,source="$(pwd)"/src,target=/work/src \
-  --mount type=bind,source="$(pwd)"/out,target=/work/out \
   --entrypoint "$ENTRYPOINT" \
   gutenbot:dev \
   $@
