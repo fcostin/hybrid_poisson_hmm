@@ -64,7 +64,7 @@ Consider a first-order hidden Markov model with a hidden state $x_t$ at each tim
 \begin{equation}
 P(z_{1:T}, x_{0:T}) = P(x_0) \prod_{t=1, \ldots, T} P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
 \end{equation}
-The condition dependence structure of the hidden Markov model is illustrated in Figure \ref{fig:hmm}.
+The condition dependence structure of the hidden Markov model is illustrated in Figure~\ref{fig:hmm}.
 
 We assume that each hidden state $x_t$ takes values in a finite state space $S = \{ s_1, \ldots, s_N \}$, and that each generated observation $z_t$ is an event count in $\nonnegint$.
 
@@ -99,7 +99,7 @@ where $w_t \in \nonnegint$ is generated from a Poisson distribution with a rate 
 & P(y_{1:T}, z_{1:T}, x_{0:T}, w_{1:t}, \lambda, \alpha, \beta) \nonumber \\
 = & P(x_0) P(\alpha, \beta) P(\lambda \mid \alpha, \beta) \prod_{t=1, \ldots, T} P(y_t \mid w_t, z_t) P(w_t \mid \lambda) P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
 \end{align}
-This conditional dependence structure is shown in Figure\ref{fig:hmmpoisson}.
+This conditional dependence structure is shown in Figure~\ref{fig:hmmpoisson}.
 
 % hmm with additive Poisson noise
 
