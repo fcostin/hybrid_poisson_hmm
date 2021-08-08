@@ -33,12 +33,14 @@
 
 \DeclareMathOperator*{\argmax}{arg\,max}
 \DeclareMathOperator*{\argmin}{arg\,min}
-\let\oldgamma\Gamma
-\let\Gamma\undefined
-\DeclareMathOperator*{\Gamma}{Gamma}
+\DeclareMathOperator*{\gammad}{Gamma}
 
 \newcommand{\reals}[0] {\mathbb{R}}
 \newcommand{\nonnegint}[0] {\mathbb{N}_{\geq 0}}
+
+\newcommand{\E}[0] {\mathbb{E}} %expect
+
+\newcommand{\bigO}[0] {\mathcal{O}}
 
 
 \begin{document}
@@ -94,7 +96,7 @@ Now consider a hidden Markov model where the event count $z_t$, generated from t
 \begin{equation}
 y_t = x_t + w_t
 \end{equation}
-where $w_t \in \nonnegint$ is generated from a Poisson distribution with a rate $\lambda > 0$ that does not vary over time. We assume a prior $\Gamma(\alpha, \beta)$ over $\lambda$. The joint probability distribution for this model is assumed to be
+where $w_t \in \nonnegint$ is generated from a Poisson distribution with a rate $\lambda > 0$ that does not vary over time. We assume a prior $\gammad(\alpha, \beta)$ over $\lambda$. The joint probability distribution for this model is assumed to be
 \begin{align}
 & P(y_{1:T}, z_{1:T}, x_{0:T}, w_{1:t}, \lambda, \alpha, \beta) \nonumber \\
 = & P(x_0) P(\alpha, \beta) P(\lambda \mid \alpha, \beta) \prod_{t=1, \ldots, T} P(y_t \mid w_t, z_t) P(w_t \mid \lambda) P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
@@ -144,7 +146,59 @@ As explained by \citet{rabiner1989tutorial}, \citet*{russell2002artificial}, giv
 
 We will focus on the first task, ``filtering''.
 
-\subsection{Forward algorithm}
+\subsection{Toward a forward algorithm}
+
+Here's the rough plan of attack:
+\begin{enumerate}
+\item follow \citet*{russell2002artificial} derivation of the forward update equation for the posterior
+\item make the working assumption that we can approximate the posterior distribution with $\gammad$ distributions, one for each hidden state $s \in S$ in the discrete state space. give a brief example illustrating why we need a way to encode belief of varying rates $\lambda$ for different states in the discrete space
+\item note how this family of approximations are not closed under the transition operator on $S$ -- whenever we apply the transition operator we end up with a mixture of $\gammad$ distributions. Similarly for conditioning on evidence.
+\item look for a best approximation of the resulting mixture within our approximation space, in the sense of minimal $KL$-divergence
+\item derive closed-form equations for our approximation to project each mixture back down to a single $\gammad$ distribution
+\item comment about approximation error
+\end{enumerate}
+
+The goal is to derive a computationally tractable way to update the posterior of the latent variables $(x_t, \lambda)$ given the information from one new observation of an event count $y_{t+1}$. An exact update algorithm would be some function $F$ of the form:
+\begin{equation}
+P(x_{t+1}, \lambda \mid y_{1:t+1}) = F\left( P(x_t, \lambda \mid y_{1:t}), y_{t+1}\right)
+\end{equation}
+One complication impeding exact computation is the coupling between the latent variables $\lambda$ and $x_{t+1}$ after conditioning on $y_{t+1}$. For a simple example of this, consider a state space $S$ consisting of two hidden states $s_1$ and $s_2$ equipped with observation models $P(z_t \mid x_t=s_1)$ and $P(z_t \mid x_t=s_2)$ with $\E \left[ P(z_t \mid x_t=s_1) \right] = 1$ and $\E \left[ P(z_t \mid x_t=s_2) \right] = 2$. Assume transitions between $s_1$ and $s_2$ are impossible, but that we have very little prior knowledge about the magnitude of $\lambda$, the rate of the Poisson noise, or the initial state $x_0$. Suppose we observe event data $y_1, \ldots, y_T$ over a period of time, and learn that the average event count $\sum_{t=1}^T y_t \approx 3$.  Then if the system were dwelling in state $x_t=s_1$ we would infer that $\lambda \approx 2$, and alternatively if system had occupied state $x_t=s_2$ we would infer that $\lambda \approx 1$, in order for the expected rate of ``signal'' event counts $Z_t$ and ``noise'' event counts $W_t$ to sum to give the observed event counts $Y_t \approx 3$. This means that an accurate representation of our posterior belief needs to be rich enough to model coupling between $\lambda$ and $x_{t+1}$.
+
+More abstractly, we can think of updating the posterior as $\phi_{t+1} = F \left( \phi_t, y_{t+1} \right)$ where the $\phi$ are elements of some space $\Phi$ that is closed under application of the following operators:
+\begin{enumerate}
+\item a transition operator $T : \Phi \rightarrow \Phi$ that evolves the latent states forward one timestep.
+\item a condition-on-observation operator $O_y : \Phi \rightarrow \Phi$, where $y$ is a new observation.
+\end{enumerate}
+If we have $T$ and $\{O_y\}_{y \in \nonnegint}$ then we can define $F(\Phi, y_{t+1}) = O_{y_{t+1}} \circ T (\Phi)$. Instead of representing the posterior exactly, we can select some approximation space $\Phi$ such that $P(x_t, \lambda \mid y_{1:t} ) \approx \phi_t \in \Phi$.
+
+\subsection{Discrete approximation of rate parameter $\lambda$}
+
+One simple approximation scheme is to fix a-priori $m$ different values of the noise rate parameter $\{ \lambda_1, \ldots, \lambda_m \} = \Lambda_m \subset \reals_{>0}$. Then, if the state space $S$ contains $n$ hidden states $s_1, \ldots, s_n$, we can reduce the model to a HMM over the $n \times m$ discrete state space $(s_i , \lambda_j ) \in S \times \Lambda_m$. One way to construct this is to consider $m$ trivial single-state HMMs for each value of $\lambda_j$, then combine them into a single HMM with state space $\{ \lambda_1, \ldots, \lambda_m \}$ but no possible transitions between distinct states by taking the disjoint union of their state spaces $\{ \lambda_j \}_j$, then take the product of the resulting HMM with the standard noise-free discrete HMM for our states $x_t \in S$.  A downside to this approach is that if we pick too few values of $m$ we may get a poor approximation, but as we pick more values of $m$, the cumulative computational effort to repeatedly apply the transition operator over $t = 1, \ldots, T$ while updating the approximate posterior is $ \bigO (T n^2 m ) $.
+
+\subsection{Factored approximation with Gamma distributions}
+
+The simple discrete approximation scheme described in the previous subsection required us to store $m$ non-negative values $P(x_t=s_i, \lambda=\lambda_j \mid y_t)$ for each $i$, $t$ in order to approximate the distribution $\lambda \sim P(x_t=s_i, \lambda \mid y_t)$. We may be able to approximate the distribution of $\lambda$ for fixed $x_t=s_i$, $t$ more compactly with an appropriately chosen parametrised family of distributions. One obvious choice to investigate is the conjugate prior distribution for $\lambda$, $\gammad(\alpha, \beta)$. This suggests the following approximation:
+\begin{equation}
+P\left(x_t=s_i, \lambda \mid y_{1:t} \right) \approx \phi(x_t=s_i, \lambda) \coloneqq g(\lambda ; \alpha_{i,t}, \beta_{i,t}) P(x_t=s_i \mid y_{1:t} ) ,
+\end{equation}
+where $g(\lambda ; \alpha_{i,t}, \beta_{i,t})$ is the probability density function of the $\gammad(\alpha_{i, t}, \beta_{i, t})$ distribution and we regard $g(\lambda ; \alpha_{i,t}, \beta_{i,t}) \approx P(\lambda | x_t=s_i, y_{1:t})$. With this approximation, we need only maintain three scalar values for each $i$, $t$:
+\begin{enumerate}
+\item $P(x_t=s_1 \mid y_{1:t})$, the value of the marginal distribution,
+\item $\alpha_{i,t}>0$, a shape parameter, and
+\item $\beta_{i,t}>0$ a rate parameter.
+\end{enumerate}
+
+Formally, we define our approximation space $\Phi$ as
+\begin{equation}
+\Phi \coloneqq \left\{ \phi_{\alpha, \beta, c} : \alpha = (\alpha_s)_s, \beta = (\beta_s)_s, c = (c_s)_s, \alpha_s > 0, \beta_s > 0, c_s \geq 0, \sum_{s \in S} c_s = 1 \right\}
+\end{equation}
+where each element $\phi_{\alpha, \beta, c} \in \Phi$ is a function $\phi_{\alpha, \beta, c} : \reals_{>0} \times S \rightarrow \reals_{\geq 0}$ that acts on a rate-state pair $(\lambda, s)$ by
+\begin{equation}
+\phi_{\alpha, \beta, c} (\lambda, s) \coloneqq c_s \; g(\lambda ; \alpha_s, \beta_s) .
+\end{equation}
+
+This approximation scheme compresses the storage requirements per time $t$ from $n m$ scalar values of the previous approximation scheme down to $3 n$ scalar values. This reduction in parameters comes at the cost of no longer being able to represent multi-modal behaviour of $\lambda \sim P(\lambda | x_t=s_i, y_{1:t})$. Note that we structurally retain the ability to represent different noise rates $\lambda$ coupled with different hidden states $s \in S$. We are not directly concerned about storage requirements, but a smaller state space hints at the possibility of reduced computational effort.
+
 
 \bibliography{note}
 
