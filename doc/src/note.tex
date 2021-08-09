@@ -61,7 +61,7 @@
 This paper considers a hybrid hidden Markov model for event counts with an additive Poisson noise term. 
 \end{abstract}
 
-\subsection{Toward a forward algorithm}
+\section{Summary}
 
 Here's the rough plan of attack:
 \begin{enumerate}
@@ -70,7 +70,7 @@ Here's the rough plan of attack:
 \item compute the likelihood for hidden Markov model with Poisson noise
 \item follow \citet*{russell2002artificial} derivation of the forward update equation for the posterior
 \item give a brief example illustrating why we need a way to encode belief of varying rates $\lambda$ for different states in the discrete space, to motivate approximations
-\item make the working assumption that we can approximate the posterior distribution with $\gammad$ distributions, one for each hidden state $s \in S$ in the discrete state space. give a brief example illustrating why we need a way to encode belief of varying rates $\lambda$ for different states in the discrete space
+\item make the working assumption that we can approximate the posterior distribution with $\gammad$ distributions, one for each hidden state $s \in S$ in the discrete state space.
 \item note how this family of approximations are not closed under the transition operator on $S$ -- whenever we apply the transition operator we end up with a mixture of $\gammad$ distributions. Similarly for conditioning on evidence.
 \item look for a best approximation of the resulting mixture within our approximation space, in the sense of minimal $KL$-divergence
 \item derive closed-form equations for our approximation to project each mixture back down to a single $\gammad$ distribution
