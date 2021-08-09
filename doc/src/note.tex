@@ -165,7 +165,7 @@ P(k_t = k \mid \lambda) P(\lambda \mid \alpha, \beta)
 \frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
 \nonumber \\
 = &
-\binom{\alpha-1+k}{k} \left( \frac{\beta}{\beta+1} \right)^{\alpha} \left( \frac{1}{\beta+1} \right)^{k} \, .
+\binom{\alpha+k-1}{k} \left( \frac{\beta}{\beta+1} \right)^{\alpha} \left( \frac{1}{\beta+1} \right)^{k} \, .
 \end{align}
 where we note that $\gammad(\lambda ; \alpha+k, \beta+1)$ is a density over $\lambda$ and hence integrates to unity. The final expression is known~\citep{gelman2013bayesian} to be the negative binomial density $k \sim \negbind\left(\alpha, \beta\right)$. Combining the above two derivations produces a terse expression for the likelihood
 \begin{align}
