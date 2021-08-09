@@ -171,7 +171,7 @@ where we note that $\gammad(\lambda ; \alpha+k, \beta+1)$ is a density over $\la
 \begin{align}
 P(y_t=y \mid x_t, \alpha, \beta)
 = & \sum_{k \in \nonnegint} P(z_t = y-k \mid x_t) \negbind\left(k ; \alpha, \beta\right) \, \nonumber \\
-= & \left[ P(z_t=k \mid x_t) * \negbind(k ; \alpha, \beta) \right] \Bigr \rvert_{k=y} \, .
+= & \left[ P(z_t=k \mid x_t) * \negbind(k ; \alpha, \beta) \right] \Bigr \rvert_{k=y} \, . \label{eqn:hybridobs}
 \end{align}
 
 % hmm with additive Poisson noise
@@ -269,6 +269,35 @@ where each element $\phi_{\alpha, \beta, c} \in \Phi$ is a function $\phi_{\alph
 \end{equation}
 
 This approximation scheme compresses the storage requirements per time $t$ from $n m$ scalar values of the previous approximation scheme down to $3 n$ scalar values. This reduction in parameters comes at the cost of no longer being able to represent multi-modal behaviour of $\lambda \sim P(\lambda | x_t=s_i, y_{1:t})$. Note that we structurally retain the ability to represent different noise rates $\lambda$ coupled with different hidden states $s \in S$. We are not directly concerned about storage requirements, but a smaller state space hints at the possibility of reduced computational effort.
+
+\subsection{Forward update}
+
+We structure the derivation of the forward upate equation for the Markov model's posterior distribution $P(x_{t+1}, \alpha, \beta \mid y_{1:{t+1}})$ as given by \citet*{russell2002artificial}:
+\begin{align}
+P(x_{t+1}, \alpha, \beta \mid y_{1:{t+1}})
+& = P(x_{t+1}, \alpha, \beta \mid y_{1:t}, y_{t+1}) \nonumber \\
+& = \frac{P(y_{t+1} \mid x_{t+1}, \alpha, \beta, y_{1:t}) P(x_{t+1}, \alpha, \beta \mid y_{1:t})}{P(y_{t+1} \mid y_{1:t})} \nonumber \\
+& \propto P(y_{t+1} \mid x_{t+1}, \alpha, \beta, y_{1:t}) P(x_{t+1}, \alpha, \beta \mid y_{1:t}) \nonumber \\
+& = P(y_{t+1} \mid x_{t+1}, \alpha, \beta) P(x_{t+1}, \alpha, \beta \mid y_{1:t}) , \label{eqn:rawforward}
+\end{align}
+where we have applied Bayes' theorem, discarded a normalising constant, and used the conditional dependence structure of our model. We computed an expression for the first factor, the likelihood $P(y_{t+1} \mid x_{t+1}, \alpha, \beta)$, earlier. The second factor $P(x_{t+1}, \alpha, \beta \mid y_{1:t})$ needs to be rewritten as some function of $P(x_{t}, \alpha, \beta \mid y_{1:t})$. We condition on $x_t=s, \alpha=a, \beta=b$:
+\begin{align}
+& P(x_{t+1}=s^{\prime}, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t}) \nonumber \\
+= & \sum_{s \in S} \int_{a, b} P(x_{t+1}=s^{\prime}, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid x_t=s, y_{1:t}, \alpha=a, \beta=b ) P(x_t=s, \alpha=a, \beta=b \mid y_{1:t}) \,d(a, b) \nonumber \\
+= & \sum_{s \in S} \int_{a, b} P(x_{t+1}=s^{\prime} \mid x_t=s) P(\alpha=\alpha^{\prime} \mid \alpha = a) P(\beta=\beta^{\prime} \mid \beta = b) P(x_t=s, \alpha=a, \beta=b \mid y_{1:t}) \,d(a, b) \nonumber \\
+= & \sum_{s \in S} P(x_{t+1}=s^{\prime} \mid x_t=s) P(x_t=s, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t}) \nonumber \\
+= & \sum_{s \in S} A_{s^{\prime}, s} P(x_t=s, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t} ) \label{eqn:advance}
+\end{align}
+Combining the proportional relation~\ref{eqn:rawforward} with equation~\ref{eqn:advance} and the expression for the likelihood~\ref{eqn:hybridobs} gives
+\begin{align}
+& P(x_{t+1}=s^{\prime}, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:{t+1}}) \nonumber \\
+\propto &
+\left[ B_{k,s^{\prime}} * \negbind(k ; \alpha^{\prime}, \beta^{\prime}) \right] \Bigr \rvert_{k=y_{t+1}}
+\sum_{s \in S} A_{s^{\prime}, s} P(x_t=s, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t} ) \, .
+\end{align}
+Note that the discrete convolution evaluates to a constant scalar value, so this gives an expression for $P(x_{t+1}=s^{\prime}, \alpha, \beta \mid y_{1:t+1})$ (up to some normalising constant) as an linear combination of $P(x_t=s, \alpha, \beta \mid y_{1:t})$ where $s$ are possible predecessor states of the successor state $s^{\prime}$.
+
+
 
 
 \bibliography{note}
