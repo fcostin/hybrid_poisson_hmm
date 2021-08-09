@@ -221,6 +221,7 @@ P(y_t=y \mid x_t, \alpha, \beta)
 \label{fig:hmmpoisson}
 \end{figure}
 
+\subsection{Inference}
 \subsection{Standard HMM inference tasks}
 
 As explained by \citet{rabiner1989tutorial}, \citet*{russell2002artificial}, given a hidden Markov model, there are a number of standard inference tasks we may wish to perform:
@@ -306,6 +307,21 @@ where each element $\phi_{\alpha, \beta, c} \in \Phi$ is a function $\phi_{\alph
 This approximation scheme compresses the storage requirements per time $t$ from $n m$ scalar values of the previous approximation scheme down to $3 n$ scalar values. This reduction in parameters comes at the cost of no longer being able to represent multi-modal behaviour of $\lambda \sim P(\lambda | x_t=s_i, y_{1:t})$. Note that we structurally retain the ability to represent different noise rates $\lambda$ coupled with different hidden states $s \in S$. We are not directly concerned about storage requirements, but a smaller state space hints at the possibility of reduced computational effort.
 
 \subsection{Approximate forward update}
+
+todo
+\begin{enumerate}
+\item restate exact update equation in more abstract form (finite linear combination of unnormalised phi functions)
+\item comment that our approximation space may not be closed under this operation
+\item propose how to repair the situation by projecting back into the approximation space
+\item propose minimising the KL divergence from the finite mixture to the element of the approximation space
+\item sketch how we can minimise by taking the derivative and setting it to the zero vector
+\item plug in our definition of the approximation scheme from the previous subsection
+\item compute some partial derivatives
+\item do a little algebra and derive some pretty constraints that characterise a best approximation
+\item do a little more algebra to define explicit update equationsfor our approximation forward update
+\item comment about computational cost
+\item comment about approximation error
+\end{enumerate}
 
 \bibliography{note}
 
