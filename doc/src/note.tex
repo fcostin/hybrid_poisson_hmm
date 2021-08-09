@@ -68,7 +68,7 @@ Consider a first-order hidden Markov model (HMM) with a hidden state $x_t$ at ea
 \begin{equation}
 P(z_{1:T}, x_{0:T}) = P(x_0) \prod_{t=1, \ldots, T} P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
 \end{equation}
-The condition dependence structure of the HMM is illustrated in Figure~\ref{fig:hmm}.Each hidden state $x_t$ takes values in a finite state space $S = \{ s_1, \ldots, s_n \}$, and that each generated observation $z_t$ is an event count in $\nonnegint$. The probability of transitioning from a state $x_t=s_j$ at time $t$ to a state $x_{t+1}=s_i$ at time $t+1$ is given by
+The conditional dependence structure of the HMM is illustrated in Figure~\ref{fig:hmm}.Each hidden state $x_t$ takes values in a finite state space $S = \{ s_1, \ldots, s_n \}$, and that each generated observation $z_t$ is an event count in $\nonnegint$. The probability of transitioning from a state $x_t=s_j$ at time $t$ to a state $x_{t+1}=s_i$ at time $t+1$ is given by
 \begin{equation}
 P(x_{t+1}=s_i \mid x_t=s_j) = A_{i,j}
 \end{equation}
