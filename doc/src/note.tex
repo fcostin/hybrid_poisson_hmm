@@ -34,6 +34,8 @@
 \DeclareMathOperator*{\argmax}{arg\,max}
 \DeclareMathOperator*{\argmin}{arg\,min}
 \DeclareMathOperator*{\gammad}{Gamma}
+\DeclareMathOperator*{\poissond}{Poisson}
+\DeclareMathOperator*{\negbind}{Neg-bin}
 
 \newcommand{\reals}[0] {\mathbb{R}}
 \newcommand{\nonnegint}[0] {\mathbb{N}_{\geq 0}}
@@ -62,13 +64,19 @@ This paper considers a hybrid hidden Markov model for event counts with an addit
 \section{probabilistic model}
 \subsection{Prelude: hidden Markov model}
 
-Consider a first-order hidden Markov model with a hidden state $x_t$ at each time $t=0,\ldots,T$ that generates observable evidence $z_t$ for $t=1,\ldots,T$. We use $z_{1:T}$ to denote $z_1, \ldots, z_T$. Due to the Markov assumptions, the joint distribution of $Z_{1:T}$ and $x_{0:T}$ factorises as
+Consider a first-order hidden Markov model (HMM) with a hidden state $x_t$ at each time $t=0,\ldots,T$ that generates observable evidence $z_t$ for $t=1,\ldots,T$. We use $z_{1:T}$ to denote $z_1, \ldots, z_T$. Due to the Markov assumptions, the joint distribution of $Z_{1:T}$ and $x_{0:T}$ factorises as
 \begin{equation}
 P(z_{1:T}, x_{0:T}) = P(x_0) \prod_{t=1, \ldots, T} P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
 \end{equation}
-The condition dependence structure of the hidden Markov model is illustrated in Figure~\ref{fig:hmm}.
-
-We assume that each hidden state $x_t$ takes values in a finite state space $S = \{ s_1, \ldots, s_N \}$, and that each generated observation $z_t$ is an event count in $\nonnegint$.
+The condition dependence structure of the HMM is illustrated in Figure~\ref{fig:hmm}.Each hidden state $x_t$ takes values in a finite state space $S = \{ s_1, \ldots, s_n \}$, and that each generated observation $z_t$ is an event count in $\nonnegint$. The probability of transitioning from a state $x_t=s_j$ at time $t$ to a state $x_{t+1}=s_i$ at time $t+1$ is given by
+\begin{equation}
+P(x_{t+1}=s_i \mid x_t=s_j) = A_{i,j}
+\end{equation}
+where $A$ is an $n \times n$ stochastic matrix. The probability of observing $z_t=k$ events at time $t$ is given by
+\begin{equation}
+P(z_t=k \mid x_t=s_j) = B_{k, j}
+\end{equation}
+where column $B_j$ is a distribution for $k$ over $\nonnegint$.
 
 % standard hmm
 
@@ -92,16 +100,79 @@ We assume that each hidden state $x_t$ takes values in a finite state space $S =
 
 \subsection{Hidden Markov model with additive Poisson noise}
 
-Now consider a hidden Markov model where the event count $z_t$, generated from the hidden state $x_t$, is no longer directly observable. Instead, at each time $t$ we observe an event count $y_t \in \nonnegint$ such that
+Now consider a HMM where the event count $z_t$, generated from the hidden state $x_t$, is no longer directly observable. Instead, at each time $t$ we observe an event count $y_t \in \nonnegint$ such that
 \begin{equation}
-y_t = x_t + w_t
+y_t = x_t + k_t
 \end{equation}
-where $w_t \in \nonnegint$ is generated from a Poisson distribution with a rate $\lambda > 0$ that does not vary over time. We assume a prior $\gammad(\alpha, \beta)$ over $\lambda$. The joint probability distribution for this model is assumed to be
+where $k_t \in \nonnegint$ is generated from a Poisson distribution with a rate $\lambda > 0$ that does not vary over time. We assume a prior distribution $\gammad(\alpha, \beta)$ over $\lambda$. The joint probability distribution for this model is assumed to be
 \begin{align}
-& P(y_{1:T}, z_{1:T}, x_{0:T}, w_{1:t}, \lambda, \alpha, \beta) \nonumber \\
-= & P(x_0) P(\alpha, \beta) P(\lambda \mid \alpha, \beta) \prod_{t=1, \ldots, T} P(y_t \mid w_t, z_t) P(w_t \mid \lambda) P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
+& P(y_{1:T}, z_{1:T}, x_{0:T}, k_{1:t}, \lambda, \alpha, \beta) \nonumber \\
+= & P(x_0) P(\alpha, \beta) P(\lambda \mid \alpha, \beta) \prod_{t=1, \ldots, T} P(y_t \mid k_t, z_t) P(k_t \mid \lambda) P(z_t \mid x_t) P(x_t \mid x_{t-1} ) \; .
 \end{align}
 This conditional dependence structure is shown in Figure~\ref{fig:hmmpoisson}.
+
+The likelihood $P(y_t=y \mid x_t, \alpha, \beta)$ of observing $y_t=y$ events given the latent variables $x_t, \alpha, \beta$ reduces to a discrete convolution between the likelihood of the noise-free HMM $P(z_t=k \mid x_t)$ and the likelihood of the noise model $P(k_t=k \mid \alpha, \beta)$:
+\begin{align}
+& P(y_t=y \mid x_t, \alpha, \beta) \nonumber \\
+= & \int_{(z, k, \lambda)} P(y_t=y \mid x_t, \alpha, \beta, z_t=z, k_t=k, \lambda=\lambda) P(z_t=z, k_t=k, \lambda=\lambda \mid x_t, \alpha, \beta) \, d(z, k, \lambda) \nonumber \\
+= & \int_{(z, k, \lambda)}
+P(y_t=y \mid z_t=z, k_t=k)
+P(z_t=z \mid x_t)
+P(k_t=k \mid \lambda)
+P(\lambda \mid \alpha, \beta)
+\, d(z, k, \lambda) \nonumber \\
+= & \int_{(k, \lambda)}
+P(z_t=y-k \mid x_t)
+P(k_t=k \mid \lambda)
+P(\lambda \mid \alpha, \beta)
+\, d(k, \lambda) \nonumber \\
+= & \sum_{k \in \nonnegint} P(z_t = y-k \mid x_t)
+\int_{\lambda} P(k_t = k \mid \lambda) P(\lambda \mid \alpha, \beta) \, d \lambda \, .
+\end{align}
+The choice of $P(k_t = k \mid \lambda)$ as the Poisson distribution and $P(\lambda \mid \alpha, \beta)$ as its conjugate prior Gamma distribution leads to a closed-form expression for the integral:
+\begin{align}
+& \int_{\lambda}
+P(k_t = k \mid \lambda) P(\lambda \mid \alpha, \beta)
+\, d \lambda \nonumber \\
+= & \int_{\lambda}
+\poissond( k ; \lambda) \gammad( \lambda ; \alpha, \beta)
+\, d \lambda \nonumber \\
+= & \int_{\lambda}
+\frac{\lambda^k e^{-\lambda}}{k!}
+\frac{\beta^{\alpha}}{\Gamma(\alpha)}
+\lambda^{\alpha-1} e^{-\beta \lambda}
+\, d \lambda \nonumber \\
+= & \int_{\lambda}
+\frac{1}{k!}
+\frac{\beta^{\alpha}}{\Gamma(\alpha)}
+\lambda^{(\alpha+k)-1} e^{-(\beta+1) \lambda}
+\, d \lambda \nonumber \\
+= &
+\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
+\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
+\int_{\lambda}
+\frac{(\beta+1)^{\alpha+k}}{\Gamma(\alpha+k)}
+\lambda^{(\alpha+k)-1} e^{-(\beta+1) \lambda}
+\, d \lambda \nonumber \\
+= &
+\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
+\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
+\int_{\lambda}
+\gammad(\lambda ; \alpha+k, \beta+1)
+\, d \lambda \nonumber \\
+= &
+\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
+\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
+\nonumber \\
+= &
+\binom{\alpha-1+k}{k} \left( \frac{\beta}{\beta+1} \right)^{\alpha} \left( \frac{1}{\beta+1} \right)^{k} \, .
+\end{align}
+where we note that $\gammad(\lambda ; \alpha+k, \beta+1)$ is a density over $\lambda$ and hence integrates to unity. The final expression is known~\citep{gelman2013bayesian} to be the negative binomial density $k \sim \negbind\left(\alpha, \beta\right)$. Combining the above two derivations produces a terse expression for the likelihood
+\begin{align}
+P(y_t=y \mid x_t, \alpha, \beta)
+= & \sum_{k \in \nonnegint} P(z_t = y-k \mid x_t) \negbind\left(k ; \alpha, \beta\right) \, \nonumber \\
+= & \left[ P(z_t=k \mid x_t) * \negbind(k ; \alpha, \beta) \right] \Bigr \rvert_{k=y} \, .
+\end{align}
 
 % hmm with additive Poisson noise
 
@@ -110,20 +181,20 @@ This conditional dependence structure is shown in Figure~\ref{fig:hmmpoisson}.
 	% nodes
 	\node[obs] (y) {$y_t$}; %
 	\node[latent,above=of y] (z) {$z_t$}; %
-	\node[latent,above left=of y] (w) {$w_t$}; %
+	\node[latent,above left=of y] (k) {$k_t$}; %
 	\node[latent,above=of z] (x) {$x_t$}; %
 	\node[latent,left=of x, xshift=-1cm] (x0) {$x_0$}; %
 
-	\node[latent,left=of w] (lambda) {$\lambda$}; %
+	\node[latent,left=of k] (lambda) {$\lambda$}; %
 	\node[latent,left=of lambda] (alphabeta) {$\alpha, \beta$}; %
 	% plates
-	\plate {timeplate} {(x) (z) (w) (y)} {$T$};%
+	\plate {timeplate} {(x) (z) (k) (y)} {$T$};%
 	% edges
 	\edge {x0} {x}
 	\edge {x} {z}
 	\edge {z} {y}
-	\edge {w} {y}
-	\edge {lambda} {w}
+	\edge {k} {y}
+	\edge {lambda} {k}
 	\edge {alphabeta} {lambda}
 	% self-loop edges
 	\path[->] (x) edge [loop above] node {$t=1,\ldots,T$; $t-1 \mapsto t$} ();
@@ -162,7 +233,7 @@ The goal is to derive a computationally tractable way to update the posterior of
 \begin{equation}
 P(x_{t+1}, \lambda \mid y_{1:t+1}) = F\left( P(x_t, \lambda \mid y_{1:t}), y_{t+1}\right)
 \end{equation}
-One complication impeding exact computation is the coupling between the latent variables $\lambda$ and $x_{t+1}$ after conditioning on $y_{t+1}$. For a simple example of this, consider a state space $S$ consisting of two hidden states $s_1$ and $s_2$ equipped with observation models $P(z_t \mid x_t=s_1)$ and $P(z_t \mid x_t=s_2)$ with $\E \left[ P(z_t \mid x_t=s_1) \right] = 1$ and $\E \left[ P(z_t \mid x_t=s_2) \right] = 2$. Assume transitions between $s_1$ and $s_2$ are impossible, but that we have very little prior knowledge about the magnitude of $\lambda$, the rate of the Poisson noise, or the initial state $x_0$. Suppose we observe event data $y_1, \ldots, y_T$ over a period of time, and learn that the average event count $\sum_{t=1}^T y_t \approx 3$.  Then if the system were dwelling in state $x_t=s_1$ we would infer that $\lambda \approx 2$, and alternatively if system had occupied state $x_t=s_2$ we would infer that $\lambda \approx 1$, in order for the expected rate of ``signal'' event counts $Z_t$ and ``noise'' event counts $W_t$ to sum to give the observed event counts $Y_t \approx 3$. This means that an accurate representation of our posterior belief needs to be rich enough to model coupling between $\lambda$ and $x_{t+1}$.
+One complication impeding exact computation is the coupling between the latent variables $\lambda$ and $x_{t+1}$ after conditioning on $y_{t+1}$. For a simple example of this, consider a state space $S$ consisting of two hidden states $s_1$ and $s_2$ equipped with observation models $P(z_t \mid x_t=s_1)$ and $P(z_t \mid x_t=s_2)$ with $\E \left[ P(z_t \mid x_t=s_1) \right] = 1$ and $\E \left[ P(z_t \mid x_t=s_2) \right] = 2$. Assume transitions between $s_1$ and $s_2$ are impossible, but that we have very little prior knowledge about the magnitude of $\lambda$, the rate of the Poisson noise, or the initial state $x_0$. Suppose we observe event data $y_1, \ldots, y_T$ over a period of time, and learn that the average event count $\sum_{t=1}^T y_t \approx 3$.  Then if the system were dwelling in state $x_t=s_1$ we would infer that $\lambda \approx 2$, and alternatively if system had occupied state $x_t=s_2$ we would infer that $\lambda \approx 1$, in order for the expected rate of ``signal'' event counts $Z_t$ and ``noise'' event counts $k_t$ to sum to give the observed event counts $y_t \approx 3$. This means that an accurate representation of our posterior belief needs to be rich enough to model coupling between $\lambda$ and $x_{t+1}$.
 
 More abstractly, we can think of updating the posterior as $\phi_{t+1} = F \left( \phi_t, y_{t+1} \right)$ where the $\phi$ are elements of some space $\Phi$ that is closed under application of the following operators:
 \begin{enumerate}
