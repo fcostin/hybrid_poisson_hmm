@@ -44,6 +44,8 @@
 
 \newcommand{\bigO}[0] {\mathcal{O}}
 
+\newtheorem{thm}{Theorem}
+
 
 \begin{document}
 
@@ -373,6 +375,93 @@ c_{s^{\prime}, s, w, k, t}
 \right]  \, .
 \end{align}
 Since the right-hand side is a mixture of Gamma distributions, while the left hand side is but a single scaled Gamma distribution, the error involved in this approximation has the potential to be large.
+
+The plan is to approximate this mixture of Gamma distributions with a single approximating Gamma distribution. Before we can proceed, we note the mixture may not be normalised. We need to factor the mixture into a normalised mixture of Gamma distributions, and a scaling coefficient. To normalise we first drop the factor $P(y_{t+1} \mid y_{1:t})^{-1}$ as it is irrelevant if we only seek to compute relative probabilities. Then, since summing the posterior distribution over $s^{\prime} \in S$ and integrating over $\lambda^{\prime} \in \reals_{>0}$ should give unity, we require a normalisation constant $Z > 0$ such that
+\begin{equation}
+\frac{1}{Z}
+\sum_{s^{\prime} \in S}
+\sum_{s \in S}
+\sum_{w \in \natural_{\geq 0}}
+c_{s^{\prime}, s, w, k, t}
+\int_{\lambda}
+\gammad(\lambda^{\prime} ; \alpha_{s,t} + w, \beta_{s,t} + 1)
+\,d\lambda = 1 \nonumber
+\end{equation}
+Each integral of a Gamma distribution evaluates to one, hence we define
+\begin{equation}
+Z \coloneqq 
+\sum_{s^{\prime} \in S}
+\sum_{s \in S}
+\sum_{w \in \natural_{\geq 0}}
+c_{s^{\prime}, s, w, k, t} \, .
+\end{equation}
+Again simplifying notation, define the non-negative real valued tensor $c^{\prime}_{s^{\prime}, s, w, k, t}$ as
+\begin{equation}
+c^{\prime}_{s^{\prime}, s, w, k, t} \coloneqq \frac{1}{Z}
+c_{s^{\prime}, s, w, k, t} \, .
+\end{equation}
+Similarly, for each $x_t=s^{\prime}$, we want to recover an approximation for the posterior distribution for $\lambda$ conditioned on $x_{t}=s^{\prime}$, and this distribution should also sum to unity, so we seek additional normalizing constants $Z_{t,s^{\prime}} > 0$ such that
+\begin{equation}
+\frac{1}{Z_{t,s^{\prime}}}
+\sum_{s \in S}
+\sum_{w \in \natural_{\geq 0}}
+c^{\prime}_{s^{\prime}, s, w, k, t}
+\int_{\lambda}
+\gammad(\lambda^{\prime} ; \alpha_{s,t} + w, \beta_{s,t} + 1)
+\,d\lambda = 1 \nonumber
+\end{equation}
+Hence we normalise once more by defining
+\begin{equation}
+Z_{t,s^{\prime}}
+\coloneqq
+\sum_{s \in S}
+\sum_{w \in \natural_{\geq 0}}
+c^{\prime}_{s^{\prime}, s, w, k, t}
+\end{equation}
+and defining another non-negative real valued tensor $c^{\prime\prime}_{s^{\prime}, s, w, k, t}$ as
+\begin{equation}
+c^{\prime\prime}_{s^{\prime}, s, w, k, t} \coloneqq \frac{1}{Z_{t, s^{\prime}}}
+c^{\prime}_{s^{\prime}, s, w, k, t} \, .
+\end{equation}
+Recall our approximation for the posterior at the next timestep $t+1$ is assumed to have the form
+\begin{equation}
+\phi(x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime}) \coloneqq \gamma_{s^{\prime},t+1} \gammad(\lambda^{\prime} ; \alpha_{s^{\prime},t+1}, \beta_{s^{\prime},t+1})
+\end{equation}
+Therefore the scaling coefficient must be
+\begin{equation}
+\gamma_{s^{\prime},t+1} = Z_{t,s^{\prime}} \, .
+\end{equation}
+The remaining task is to derive expressions for $(\alpha_{s^{\prime},t+1}, \beta_{s^{\prime},t+1})$.
+
+\begin{thm}
+Let $p(\lambda)$ be a finite mixture of Gamma distributions,
+\begin{equation}
+p(\lambda) = \sum_j c_j \gammad(\lambda \mid \theta_j)
+\end{equation}
+such that $\sum_j c_j = 1$, $c_j \geq 0$ for all $j$, $\theta_j = (\alpha_j, \beta_j)$ with $\alpha_j > 0$, $\beta_j > 0$, and $q(\lambda \mid \theta)$ be a single Gamma distribution
+\begin{equation}
+q(\lambda \mid \theta ) = \gammad(\lambda \mid \theta) \, .
+\end{equation}
+Then the best approximation of $p(\lambda)$ by $q(\lambda \mid \theta)$ in the sense of KL-divergence from $q$ to $p$,
+\begin{equation}
+\theta^{*} = \argmin_{\theta} \int_{\lambda} p(\lambda) \log \left( \frac{q(\lambda \mid \theta) }{ p(\lambda } \right) \, d\lambda ,
+\end{equation}
+is characterised by $\theta^* = (\alpha^*, \beta^*)$ satisfying the constraints:
+\begin{alignat}{3}
+\E_q \left[ \lambda \right]
+& = \frac{\alpha^*}{\beta^*}
+&& = \sum_j c_j \left( \frac{\alpha_j}{\beta_j} \right)
+&& = \E_p \left[ \lambda \right] \\
+\E_q \left[ \log(\lambda) \right]
+& = \psi(\alpha^*) - \log(\beta^*)
+&& = \sum_j c_j \left( \psi(\alpha_j) - \log(\beta_j) \right)
+&& = \E_p \left[ \log(\lambda) \right]
+\end{alignat}
+
+\end{thm}
+\begin{proof}
+\end{proof}
+
 
 
 \subsection{todo}
