@@ -129,7 +129,7 @@ where $k_t \in \nonnegint$ is generated from a Poisson distribution with a rate 
 \end{align}
 This conditional dependence structure is shown in Figure~\ref{fig:hmmpoisson}.
 
-The likelihood $P(y_t=y \mid x_t, \alpha, \beta)$ of observing $y_t=y$ events given the latent variables $x_t, \alpha, \beta$ reduces to a discrete convolution between the likelihood of the noise-free HMM $P(z_t=k \mid x_t)$ and the likelihood of the noise model $P(k_t=k \mid \alpha, \beta)$:
+The likelihood $P(y_t=y \mid x_t, \alpha, \beta)$ of observing $y_t=y$ events given the latent variables $x_t, \alpha, \beta$ reduces to a discrete convolution between the likelihood of the noise-free HMM $P(z_t=k \mid x_t)$ and the likelihood of the noise model $P(k_t=k \mid \alpha, \beta)$.
 \begin{align}
 & P(y_t=y \mid x_t, \alpha, \beta) \nonumber \\
 = & \int_{(z, k, \lambda)} P(y_t=y \mid x_t, \alpha, \beta, z_t=z, k_t=k, \lambda=\lambda) P(z_t=z, k_t=k, \lambda=\lambda \mid x_t, \alpha, \beta) \, d(z, k, \lambda) \nonumber \\
@@ -155,41 +155,13 @@ P(k_t = k \mid \lambda) P(\lambda \mid \alpha, \beta)
 = & \int_{\lambda}
 \poissond( k ; \lambda) \gammad( \lambda ; \alpha, \beta)
 \, d \lambda \nonumber \\
-= & \int_{\lambda}
-\frac{\lambda^k e^{-\lambda}}{k!}
-\frac{\beta^{\alpha}}{\Gamma(\alpha)}
-\lambda^{\alpha-1} e^{-\beta \lambda}
-\, d \lambda \nonumber \\
-= & \int_{\lambda}
-\frac{1}{k!}
-\frac{\beta^{\alpha}}{\Gamma(\alpha)}
-\lambda^{(\alpha+k)-1} e^{-(\beta+1) \lambda}
-\, d \lambda \nonumber \\
-= &
-\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
-\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
-\int_{\lambda}
-\frac{(\beta+1)^{\alpha+k}}{\Gamma(\alpha+k)}
-\lambda^{(\alpha+k)-1} e^{-(\beta+1) \lambda}
-\, d \lambda \nonumber \\
-= &
-\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
-\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
-\int_{\lambda}
-\gammad(\lambda ; \alpha+k, \beta+1)
-\, d \lambda \nonumber \\
-= &
-\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
-\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
-\nonumber \\
 = &
 \binom{\alpha+k-1}{k} \left( \frac{\beta}{\beta+1} \right)^{\alpha} \left( \frac{1}{\beta+1} \right)^{k} \, .
 \end{align}
-where we note that $\gammad(\lambda ; \alpha+k, \beta+1)$ is a density over $\lambda$ and hence integrates to unity. The final expression is known~\citep{gelman2013bayesian} to be the negative binomial density $k \sim \negbind\left(\alpha, \beta\right)$. Combining the above two derivations produces a terse expression for the likelihood
+A short proof of this identity is given in Appendix~\ref{appendix:gammaconj}. This final expression is known~\citep{gelman2013bayesian} to be the negative binomial density $k \sim \negbind\left(\alpha, \beta\right)$. Combining the above two derivations produces a terse expression for the likelihood
 \begin{align}
 P(y_t=y \mid x_t, \alpha, \beta)
-= & \sum_{k \in \nonnegint} P(z_t = y-k \mid x_t) \negbind\left(k ; \alpha, \beta\right) \, \nonumber \\
-= & \left[ P(z_t=k \mid x_t) * \negbind(k ; \alpha, \beta) \right] \Bigr \rvert_{k=y} \, . \label{eqn:hybridconjpriorobs}
+= & \sum_{k \in \nonnegint} P(z_t = y-k \mid x_t) \negbind\left(k ; \alpha, \beta\right) \, . \label{eqn:hybridconjpriorobs}
 \end{align}
 
 % hmm with additive Poisson noise
@@ -288,7 +260,7 @@ A_{s^{\prime}, s}
 \sum_{w \in \nonnegint}
 B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime})
 P(x_t=s, \lambda_t=\lambda^{\prime} \mid y_{1:t} )
-\right]
+\right] \label{eqn:exactfwdupdate}
 \end{align}
 
 One complication impeding exact computation of the posterior $P(x_{t+1}, \lambda_{t+1} \mid y_{1:t+1})$ is the coupling between the latent variables $\lambda_{t}$ and $x_{t}$ after conditioning on $y_{1:t}$. For a simple example of this, consider a state space $S$, consisting of two hidden states $s_1$ and $s_2$, equipped with observation models $P(z_t \mid x_t=s_1)$ and $P(z_t \mid x_t=s_2)$ such that $\E \left[ P(z_t \mid x_t=s_1) \right] = 1$ and $\E \left[ P(z_t \mid x_t=s_2) \right] = 2$. Assume transitions between $s_1$ and $s_2$ are impossible, but that we have very little prior knowledge about the magnitude of $\lambda$, the rate of the Poisson noise, or the initial state $x_0$. Suppose we observe event data $y_1, \ldots, y_T$ over a period of time, and learn that the average event count $\sum_{t=1}^T y_t \approx 3$.  Then if the system were dwelling in state $x_t=s_1$ we would infer that $\lambda \approx 2$, in order for the expected rate of ``signal'' event counts $Z_t$ and ``noise'' event counts $k_t$ to sum to give the observed event counts $y_t \approx 3$. Alternatively, if the system had occupied state $x_t=s_2$ we would infer that $\lambda \approx 1$. This means that an accurate representation of our posterior belief $P(x_{t+1}, \lambda_{t+1} \mid y_{1:t+1})$ needs to be rich enough to model coupling between $\lambda_{t+1}$ and $x_{t+1}$.
@@ -327,40 +299,89 @@ We chose this direction as intuitively it feels more correct to evaluate the exp
 
 \subsection{Discrete approximation of rate parameter $\lambda$}
 
-One simple approximation scheme is to fix a-priori $m$ different values of the noise rate parameter $\{ \lambda_1, \ldots, \lambda_m \} = \Lambda_m \subset \reals_{>0}$. Then, if the state space $S$ contains $n$ hidden states $s_1, \ldots, s_n$, we can reduce the model to a HMM over the $n \times m$ discrete state space $(s_i , \lambda_j ) \in S \times \Lambda_m$. One way to construct this is to consider $m$ trivial single-state HMMs for each value of $\lambda_j$, then combine them into a single HMM with state space $\{ \lambda_1, \ldots, \lambda_m \}$ but no possible transitions between distinct states by taking the disjoint union of their state spaces $\{ \lambda_j \}_j$, then take the product of the resulting HMM with the standard noise-free discrete HMM for our states $x_t \in S$.  A downside to this approach is that if we pick too few values of $m$ we may get a poor approximation, but as we pick more values of $m$, the cumulative computational effort to repeatedly apply the transition operator over $t = 1, \ldots, T$ while updating the approximate posterior is $ \bigO (T n^2 m ) $.
+One simple approximation scheme is to fix a-priori $m$ different values of the noise rate parameter $\{ \lambda_1, \ldots, \lambda_m \} = \Lambda_m \subset \reals_{>0}$. Then, if the state space $S$ contains $n$ hidden states $s_1, \ldots, s_n$, we can reduce the model to a HMM over the $n \times m$ discrete state space $(s , \lambda_j ) \in S \times \Lambda_m$. One way to construct this is to consider $m$ trivial single-state HMMs for each value of $\lambda_j$, then combine them into a single HMM with state space $\{ \lambda_1, \ldots, \lambda_m \}$ but no possible transitions between distinct states by taking the disjoint union of their state spaces $\{ \lambda_j \}_j$, then take the product of the resulting HMM with the standard noise-free discrete HMM for our states $x_t \in S$.  A downside to this approach is that if we pick too few values of $m$ we may get a poor approximation, but as we pick more values of $m$, the cumulative computational effort to repeatedly apply the transition operator over $t = 1, \ldots, T$ while updating the approximate posterior is $ \bigO (T n^2 m ) $.
 
 \subsection{Approximation with Gamma distributions}
 
-The simple discrete approximation scheme described in the previous subsection required us to store $m$ non-negative values $P(x_t=s_i, \lambda=\lambda_j \mid y_t)$ for each $i$, $t$ in order to approximate the distribution $\lambda \sim P(x_t=s_i, \lambda \mid y_t)$. We may be able to approximate the distribution of $\lambda$ for fixed $x_t=s_i$, $t$ more compactly with an appropriately chosen parametrised family of distributions. One obvious choice to investigate is the conjugate prior distribution for $\lambda$, $\gammad(\alpha, \beta)$. This suggests the following approximation:
+The simple discrete approximation scheme described in the previous subsection required us to store $m$ non-negative values $P(x_t=s, \lambda=\lambda_j \mid y_t)$ for each $s$, $t$ in order to approximate the distribution $\lambda \sim P(x_t=s, \lambda \mid y_t)$. We may be able to approximate the distribution of $\lambda$ for fixed $x_t=s$, $t$ more compactly with an appropriately chosen parametrised family of distributions. One obvious choice to investigate is the conjugate prior distribution for $\lambda$, $\gammad(\alpha, \beta)$. This suggests the following approximation:
 \begin{equation}
-P\left(x_t=s_i, \lambda \mid y_{1:t} \right) \approx \phi(x_t=s_i, \lambda) \coloneqq g(\lambda ; \alpha_{i,t}, \beta_{i,t}) P(x_t=s_i \mid y_{1:t} ) ,
+P\left(x_t=s, \lambda \mid y_{1:t} \right) \approx \phi(x_t=s, \lambda) \coloneqq \gammad(\lambda ; \alpha_{s,t}, \beta_{s,t}) P(x_t=s \mid y_{1:t} ) ,
 \end{equation}
-where $g(\lambda ; \alpha_{i,t}, \beta_{i,t})$ is the probability density function of the $\gammad(\alpha_{i, t}, \beta_{i, t})$ distribution and we regard $g(\lambda ; \alpha_{i,t}, \beta_{i,t}) \approx P(\lambda | x_t=s_i, y_{1:t})$. With this approximation, we need only maintain three scalar values for each $i$, $t$:
+where we regard the Gamma distribution $\gammad(\lambda ; \alpha_{s,t}, \beta_{s,t})$ as an approximation to the posterior distribution for the rate conditioned on the hidden state: $P(\lambda | x_t=s, y_{1:t})$. With this approximation, we need only maintain three scalar values for each $s$, $t$:
 \begin{enumerate}
-\item $P(x_t=s_1 \mid y_{1:t})$, the value of the marginal distribution,
-\item $\alpha_{i,t}>0$, a shape parameter, and
-\item $\beta_{i,t}>0$ a rate parameter.
+\item $P(x_t=s \mid y_{1:t})$, the value of the marginal distribution,
+\item $\alpha_{s,t}>0$, a shape parameter, and
+\item $\beta_{s,t}>0$ a rate parameter.
 \end{enumerate}
 
-Formally, we define our approximation space $\Phi$ as
+We define our approximation space $\Phi$ as
 \begin{equation}
-\Phi \coloneqq \left\{ \phi_{\alpha, \beta, c} : \alpha = (\alpha_s)_s, \beta = (\beta_s)_s, c = (c_s)_s, \alpha_s > 0, \beta_s > 0, c_s \geq 0, \sum_{s \in S} c_s = 1 \right\}
+\Phi \coloneqq \left\{ \phi_{\alpha, \beta, \gamma} : \alpha = (\alpha_s)_s, \beta = (\beta_s)_s, \gamma = (\gamma_s)_s, \alpha_s > 0, \beta_s > 0, \gamma_s \geq 0, \sum_{s \in S} c_s = 1 \right\}
 \end{equation}
-where each element $\phi_{\alpha, \beta, c} \in \Phi$ is a function $\phi_{\alpha, \beta, c} : \reals_{>0} \times S \rightarrow \reals_{\geq 0}$ that acts on a rate-state pair $(\lambda, s)$ by
+where each element $\phi_{\alpha, \beta, \gamma} \in \Phi$ is a function $\phi_{\alpha, \beta, \gamma} : S \times \reals_{>0} \rightarrow \reals_{\geq 0}$ that acts on a state-rate pair $(s, \lambda)$ by
 \begin{equation}
-\phi_{\alpha, \beta, c} (\lambda, s) \coloneqq c_s \; g(\lambda ; \alpha_s, \beta_s) .
+\phi_{\alpha, \beta, \gamma} (s, \lambda) \coloneqq \gamma_s \; \gammad(\lambda ; \alpha_s, \beta_s) .
 \end{equation}
 
-This approximation scheme compresses the storage requirements per time $t$ from $n m$ scalar values of the previous approximation scheme down to $3 n$ scalar values. This reduction in parameters comes at the cost of no longer being able to represent multi-modal behaviour of $\lambda \sim P(\lambda | x_t=s_i, y_{1:t})$. Note that we structurally retain the ability to represent different noise rates $\lambda$ coupled with different hidden states $s \in S$. We are not directly concerned about storage requirements, but a smaller state space hints at the possibility of reduced computational effort.
+This approximation scheme compresses the storage requirements per time $t$ from $n m$ scalar values of the previous approximation scheme down to $3 n$ scalar values. This reduction in parameters comes at the cost of no longer being able to represent multi-modal behaviour of $\lambda \sim P(\lambda | x_t=s_i y_{1:t})$. This approximation retains the ability to represent different noise rates $\lambda$ coupled with different hidden states $s \in S$. We are not directly concerned about storage requirements, but a smaller state space hints at the possibility of reduced computational effort.
 
-\subsection{Approximate forward update}
+\subsection{Approximate forward update for Gamma distribution approximation}
 
-todo
+Substituting approximations $\phi(x_t, \lambda_t)$ for the true posterior $p(x_t, \lambda_t \mid y_{1:t})$ into the forward update equation~\ref{eqn:exactfwdupdate} gives:
+\begin{align}
+& \phi(x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime}) \nonumber \\
+\approx &
+\frac{1}{P(y_{t+1} \mid y_{1:t})}
+\left[
+\sum_{s \in S}
+A_{s^{\prime}, s}
+\sum_{w \in \nonnegint}
+B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime})
+\phi(x_t=s, \lambda_t=\lambda^{\prime})
+\right]  \, . \label{eqn:rawapproxupdate}
+\end{align}
+where $y_{t+1} = k$.
+Expanding $\phi(x_t=s, \lambda_t=\lambda^{\prime}) \coloneqq \gamma_{s,t} \gammad(\lambda^{\prime} ; \alpha_{s,t}, \beta_{s,t})$ allows us to use an identity between the Poisson and conjugate-prior Gamma distributions to eliminate the Poisson pmf factor:
+\begin{align}
+\poissond(w ; \lambda^{\prime}) \phi(x_t=s, \lambda_t=\lambda^{\prime}) & = 
+\gamma_{s,t} \poissond(w ; \lambda^{\prime}) \gammad(\lambda^{\prime} ; \alpha_{s,t}, \beta_{s,t}) \nonumber \\
+& = \gamma_{s,t} \negbind(w ; \alpha_{s,t}, \beta_{s,t}) \gammad(\lambda^{\prime} ; \alpha_{s,t} + w, \beta_{s,t} + 1) \nonumber \\
+\end{align}
+The identity used above is:
+\begin{equation}
+\poissond(w ; \lambda) \gammad(\lambda ; \alpha, \beta) = 
+\negbind(w ; \alpha, \beta)
+\gammad(\lambda ; \alpha + w, \beta + 1) \, . \nonumber
+\end{equation}
+The proof of this identity is elementary given the definitions of the three distributions, see Appendix~\ref{appendix:gammaconj}.
+
+To simplify notation, define the non-negative real-valued tensor $c_{s^{\prime}, s, w, k, t}$ as
+\begin{equation}
+c_{s^{\prime}, s, w, k, t} \coloneqq A_{s^{\prime}, s} B_{k-w, s^{\prime}} \gamma_{s,t} \negbind(w ; \alpha_s,t}, \beta_{s,t}) \, .
+\end{equation}
+
+The right hand side of the update equation~\ref{eqn:rawapproxupdate} is seen to be a finite mixture of Gamma distributions with non-negative weights:
+\begin{align}
+& \phi(x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime}) \nonumber \\
+\approx &
+\frac{1}{P(y_{t+1} \mid y_{1:t})}
+\left[
+\sum_{s \in S}
+\sum_{w \in \nonnegint}
+c_{s^{\prime}, s, w, k, t}
+\gammad(\lambda^{\prime} ; \alpha_{s,t} + w, \beta_{s,t} + 1)
+\right]  \, . \label{eqn:rawapproxupdate}
+\end{align}
+Since the right-hand side is a mixture of Gamma distributions, while the left hand side is but a single scaled Gamma distribution, the error involved in this approximation has the potential to be large.
+
+
+\subsection{todo}
+
 \begin{enumerate}
 \item restate exact update equation in more abstract form (finite linear combination of unnormalised phi functions)
-\item comment that our approximation space may not be closed under this operation
-\item propose how to repair the situation by projecting back into the approximation space
-\item propose minimising the KL divergence from the finite mixture to the element of the approximation space
+\item comment that our approximation space may not be closed under this operation (done)
+\item propose how to repair the situation by projecting back into the approximation space (done)
+\item propose minimising the KL divergence from the finite mixture to the element of the approximation space (done)
 \item sketch how we can minimise by taking the derivative and setting it to the zero vector
 \item plug in our definition of the approximation scheme from the previous subsection
 \item compute some partial derivatives
@@ -369,6 +390,65 @@ todo
 \item comment about computational cost
 \item comment about approximation error
 \end{enumerate}
+
+\appendix
+
+\section{Gamma distribution identities}
+\label{appendix:gammaconj}
+
+The Poisson distribution and its conjugate prior Gamma distribution produce a closed-form expression when multiplied together. This follows immediately from unpacking the definitions, rearranging some factors, and inserting suitable forms of the multiplicative identity:
+\begin{align}
+& P(k_t = k \mid \lambda) P(\lambda \mid \alpha, \beta)
+\nonumber \\
+= &
+\poissond( k ; \lambda) \gammad( \lambda ; \alpha, \beta)
+\nonumber \\
+= &
+\frac{\lambda^k e^{-\lambda}}{k!}
+\frac{\beta^{\alpha}}{\Gamma(\alpha)}
+\lambda^{\alpha-1} e^{-\beta \lambda}
+\lambda \nonumber \\
+= &
+\frac{1}{k!}
+\frac{\beta^{\alpha}}{\Gamma(\alpha)}
+\lambda^{(\alpha+k)-1} e^{-(\beta+1) \lambda}
+\nonumber \\
+= &
+\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
+\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
+\frac{(\beta+1)^{\alpha+k}}{\Gamma(\alpha+k)}
+\lambda^{(\alpha+k)-1} e^{-(\beta+1) \lambda}
+\nonumber \\
+= &
+\frac{\Gamma(\alpha+k)}{\Gamma(\alpha) k!}
+\frac{\beta^{\alpha}}{(\beta+1)^{\alpha+k}}
+\gammad(\lambda ; \alpha+k, \beta+1)
+\nonumber \\
+= &
+\binom{\alpha+k-1}{k} \left( \frac{\beta}{\beta+1} \right)^{\alpha} \left( \frac{1}{\beta+1} \right)^{k}
+\gammad(\lambda ; \alpha+k, \beta+1)
+\nonumber \\
+= &
+\negbind(k ; \alpha, \beta)
+\gammad(\lambda ; \alpha+k, \beta+1) \, .
+\nonumber
+\end{align}
+The penultimate factor in front of the Gamma distribution is known~\citep{gelman2013bayesian} to be the negative binomial density $k \sim \negbind\left(\alpha, \beta\right)$. Note that the upper parameter of the binomial coefficient may be negative when $k=0$ and $\alpha < 1$ -- one way to interpret this is to consider the definition $\binom{n}{k} = n! (k! (n-k)!)^{-1}$ over non-negative integers $n$ and $k$, recall that the factorial is extended over complex numbers by $\Gamma$, where at integers $n$ $\Gamma(n) = (n-1)!$, then extend $\binom{n}{k}$ by redefining it as $\binom{n}{k} = \Gamma(n+1) (\Gamma(k+1) \Gamma(n-k))^{-1}$ .
+
+This identity can also be used to give a closed-form expression for the integral: 
+\begin{align}
+& \int_{\lambda}
+P(k_t = k \mid \lambda) P(\lambda \mid \alpha, \beta)
+\, d \lambda \nonumber \\
+= & \int_{\lambda}
+\poissond( k ; \lambda) \gammad( \lambda ; \alpha, \beta)
+\, d \lambda \nonumber \\
+= & \negbind(k ; \alpha, \beta) \int_{\lambda}
+\gammad(\lambda ; \alpha+k, \beta+1)
+\, d \lambda \nonumber \\
+= & \negbind(k ; \alpha, \beta) \nonumber
+\end{align}
+where $\gammad(\lambda ; \alpha+k, \beta+1)$ is a distribution over $\lambda$ and hence integrates to unity.
 
 \bibliography{note}
 
