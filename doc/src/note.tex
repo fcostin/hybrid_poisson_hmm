@@ -189,7 +189,7 @@ where we note that $\gammad(\lambda ; \alpha+k, \beta+1)$ is a density over $\la
 \begin{align}
 P(y_t=y \mid x_t, \alpha, \beta)
 = & \sum_{k \in \nonnegint} P(z_t = y-k \mid x_t) \negbind\left(k ; \alpha, \beta\right) \, \nonumber \\
-= & \left[ P(z_t=k \mid x_t) * \negbind(k ; \alpha, \beta) \right] \Bigr \rvert_{k=y} \, . \label{eqn:hybridobs}
+= & \left[ P(z_t=k \mid x_t) * \negbind(k ; \alpha, \beta) \right] \Bigr \rvert_{k=y} \, . \label{eqn:hybridconjpriorobs}
 \end{align}
 
 % hmm with additive Poisson noise
@@ -236,14 +236,14 @@ As explained by \citet{rabiner1989tutorial}, \citet*{russell2002artificial}, giv
 
 We will focus on the first task, ``filtering''.
 
-\subsection{Exact forward update}
+\subsection{Forward update}
 
-The goal is to derive a computationally tractable way to update the posterior of the latent variables $P(x_t, \lambda \mid y_{1:t})$ given the information from one new observation of an event count $y_{t+1}$. An exact update would be some function $F$ expressing the following relation:
+The goal is to derive a computationally tractable way to update the posterior of the latent variables $P(x_t, \lambda \mid y_{1:t})$ given the information from one new observation of an event count $y_{t+1}$. A suitable update would be some function $F$ expressing the following relation:
 \begin{equation}
 P(x_{t+1}, \lambda \mid y_{1:t+1}) = F\left( P(x_t, \lambda \mid y_{1:t}), y_{t+1}\right)
 \end{equation}
 
-Although the rate parameter $\lambda$ does not vary in time, it can be notationally helpful to write $(x_t, \lambda_t)$ to denote the random variables $x_t$ and $\lambda_t=\lambda$ at time $t$. We can regard $(x_t, \lambda_t)$ as the hidden state of a HMM on the product state space $S \times \reals_{>0}$, with a transition model defined naturally component-wise (note the transition model for $\lambda_t$ is trivial since $\lambda_t=\lambda$ for all $t$).
+Although the rate parameter $\lambda$ does not vary in time, it can be notationally helpful to write $(x_t, \lambda_t)$ to denote the random variables $x_t$ and $\lambda_t=\lambda$ at time $t$. We can regard $(x_t, \lambda_t)$ as the hidden state of a HMM on the product state space $S \times \reals_{>0}$, with a transition model defined naturally component-wise -- note the transition model for $\lambda_t$ is trivial since $\lambda_t=\lambda$ for all $t$.
 
 We structure the derivation of the forward upate for the model's posterior distribution $P(x_{t+1}, \lambda_t \mid y_{1:{t+1}})$ following \citet*{russell2002artificial}:
 \begin{align}
@@ -258,7 +258,7 @@ The first factor $P(y_{t+1} \mid y_{1:t})^{-1}$ does not depend upon our latent 
 \begin{equation}
 P(y_{t+1}=k \mid x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime})
 =
-\sum_{w \in \nonnegint} B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime}) \, .
+\sum_{w \in \nonnegint} B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime}) \, \label{eqn:hybridobs} .
 \end{equation}
 The latter factor $P(x_{t+1}, \lambda_{t+1} \mid y_{1:t})$ needs to be rewritten as a function of $P(x_{t}, \lambda_{t} \mid y_{1:t})$, which can be obtained from the transition model after conditioning on $x_t=s, \lambda_t=\lambda$:
 \begin{align}
@@ -295,13 +295,35 @@ One complication impeding exact computation of the posterior $P(x_{t+1}, \lambda
 
 The previous example also serves to illustrate how the marginal posterior distribution for $\lambda$ can be multi-modal. This is also true for the conditional posterior distribution $P(\lambda_t \mid x_t=s, y_{1:t})$. Consider a singleton state space $S=\{s\}$ with an observation model $P(z_t \mid x_t=s)$ that emits an event count of $z_t=0$ or $z_t=100$ with uniform probability $1/2$. Suppose we have little prior knowledge about the noise rate $\lambda$. At $t=1$ we observe our first data $y_1=100$. We infer either $z_1=100$ hence $k_1=0$ or $z_1=0$ hence $k_1=100$. Therefore our conditional posterior belief for the noise rate $P(\lambda_1 \mid x_1=s, y_1)$ will be bimodal, having one mode near $\lambda=100$ and another mode near $\lambda=0$.
 
-\subsection{Approximating the posterior}
+\subsection{Approximate forward updates of approximate posteriors}
 We can regard the forward update of the posterior as $\phi_{t+1} = F \left( \phi_t, y_{t+1} \right)$ where the $\phi$ are abstract elements of some space $\Phi$ that is closed under application of the following operators:
 \begin{enumerate}
 \item a transition operator $T : \Phi \rightarrow \Phi$ that evolves the latent states forward one time step.
 \item a condition-on-observation operator $O_y : \Phi \rightarrow \Phi$, where $y$ is a new observation.
 \end{enumerate}
-If we have $T$ and $\{O_y\}_{y \in \nonnegint}$ then we can define $F(\Phi, y_{t+1}) = O_{y_{t+1}} \circ T (\Phi)$. Instead of representing the posterior exactly, we can select some approximation space $\Phi$ such that $P(x_t, \lambda \mid y_{1:t} ) \approx \phi_t \in \Phi$.
+If we have $T$ and $\{O_y\}_{y}$ then we can define $F(\phi, y) = O_{y} \circ T (\phi)$. Instead of representing the posterior exactly, we can select some approximation space $\Phi$ such that $P(x_t, \lambda \mid y_{1:t} ) \approx \phi_t \in \Phi$.
+
+An approximation scheme may also be able to handle the case where the approximation space $\Phi$ is \emph{not} closed under application of $T$ or $O_y$. Suppose there exists some enclosing space $\bar{\Phi} \supset \Phi$ such that $\bar{\Phi}$ is closed under application of $T$ and $O_y$. Then, provided we can define a projection operator $\Pi_{\Phi} : \bar{\Phi} \rightarrow \Phi$ that maps each element in $\bar{\Phi} \setminus \Phi$ to its ``best'' approximation in $\Phi$, we can then define an approximate forward update function $\tilde{F}(\circ, y): \Phi \rightarrow \Phi$ by
+\begin{equation}
+\tilde{F}(\phi, y) \coloneqq \Pi_{\Phi} \circ O_{y} \circ T (\phi) \, .
+\end{equation}
+
+A natural way to project onto an approximation space inside a larger space $\bar{\Phi}$ equipped with a distance metric $d_{\bar{\Phi}}$ is to find any point in the approximation space with minimal distance from the point $\phi \in \bar{\Phi} \setminus \Phi$ we wish to approximate:
+\begin{equation}
+\Pi_{\Phi}(\phi)
+\coloneqq
+\argmin_{\phi^{\prime} \in \Phi } d_{\bar{\Phi}}(\phi, \phi^{\prime})
+\end{equation}
+Our objects $\phi$ are distributions, so instead of a distance metric we will instead measure error in the sense of the the (directed) Kullback–Leibler divergence of the original distribution $\phi$ from the approximant:~\footnote{
+We chose this direction as intuitively it feels more correct to evaluate the expectation of the relative entropy with respect to the orginal, not the approximation. But perhaps this is mistaken, or perhaps it doesn't matter.}
+\begin{align}
+\Pi^{KL}_{\Phi}(\phi)
+\coloneqq &
+\argmin_{\phi^{\prime} \in \Phi } D_{KL}(\phi \mid \mid \phi^{\prime}) \\
+ = & \argmin_{\phi^{\prime} \in \Phi } \mathbb{E}_{\phi} \left[ \log \left( \frac{ \phi^{\prime}}{ \phi } \right) \right]
+\end{align}
+
+
 
 \subsection{Discrete approximation of rate parameter $\lambda$}
 
