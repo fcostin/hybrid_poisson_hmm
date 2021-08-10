@@ -280,25 +280,23 @@ P(x_t=s, \lambda_t=\lambda^{\prime} \mid y_{1:t} ) \nonumber \\
 \label{eqn:advance}
 \end{align}
 
-TODO fix this up:
-
 Combining equation~\ref{eqn:rawforward} with equation~\ref{eqn:advance} and the expression for the likelihood~\ref{eqn:hybridobs} gives
 \begin{align}
 & P(x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime} \mid y_{1:{t+1}}) \nonumber \\
 = &
 \frac{1}{P(y_{t+1} \mid y_{1:t})}
 \left[
-\sum_{w \in \nonnegint}
-B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime})
 \sum_{s \in S}
 A_{s^{\prime}, s}
+\sum_{w \in \nonnegint}
+B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime})
 P(x_t=s, \lambda_t=\lambda^{\prime} \mid y_{1:t} )
 \right]
-\end{aligh}
+\end{align}
 
-Note that the discrete convolution evaluates to a constant scalar value, so this gives an expression for $P(x_{t+1}=s^{\prime}, \alpha, \beta \mid y_{1:t+1})$ (up to some normalising constant) as an linear combination of $P(x_t=s, \alpha, \beta \mid y_{1:t})$ where $s$ are possible predecessor states of the successor state $s^{\prime}$.
+One complication impeding exact computation of the posterior $P(x_{t+1}, \lambda_{t+1} \mid y_{1:t+1})$ is the coupling between the latent variables $\lambda_{t}$ and $x_{t}$ after conditioning on $y_{1:t}$. For a simple example of this, consider a state space $S$, consisting of two hidden states $s_1$ and $s_2$, equipped with observation models $P(z_t \mid x_t=s_1)$ and $P(z_t \mid x_t=s_2)$ such that $\E \left[ P(z_t \mid x_t=s_1) \right] = 1$ and $\E \left[ P(z_t \mid x_t=s_2) \right] = 2$. Assume transitions between $s_1$ and $s_2$ are impossible, but that we have very little prior knowledge about the magnitude of $\lambda$, the rate of the Poisson noise, or the initial state $x_0$. Suppose we observe event data $y_1, \ldots, y_T$ over a period of time, and learn that the average event count $\sum_{t=1}^T y_t \approx 3$.  Then if the system were dwelling in state $x_t=s_1$ we would infer that $\lambda \approx 2$, in order for the expected rate of ``signal'' event counts $Z_t$ and ``noise'' event counts $k_t$ to sum to give the observed event counts $y_t \approx 3$. Alternatively, if the system had occupied state $x_t=s_2$ we would infer that $\lambda \approx 1$. This means that an accurate representation of our posterior belief $P(x_{t+1}, \lambda_{t+1} \mid y_{1:t+1})$ needs to be rich enough to model coupling between $\lambda_{t+1}$ and $x_{t+1}$.
 
-One complication impeding exact computation is the coupling between the latent variables $\alpha, \beta$ and $x_{t+1}$ after conditioning on $y_{t+1}$. For a simple example of this, consider a state space $S$ consisting of two hidden states $s_1$ and $s_2$ equipped with observation models $P(z_t \mid x_t=s_1)$ and $P(z_t \mid x_t=s_2)$ with $\E \left[ P(z_t \mid x_t=s_1) \right] = 1$ and $\E \left[ P(z_t \mid x_t=s_2) \right] = 2$. Assume transitions between $s_1$ and $s_2$ are impossible, but that we have very little prior knowledge about the magnitude of $\lambda$, the rate of the Poisson noise, or the initial state $x_0$. Suppose we observe event data $y_1, \ldots, y_T$ over a period of time, and learn that the average event count $\sum_{t=1}^T y_t \approx 3$.  Then if the system were dwelling in state $x_t=s_1$ we would infer that $\lambda \approx 2$, and alternatively if system had occupied state $x_t=s_2$ we would infer that $\lambda \approx 1$, in order for the expected rate of ``signal'' event counts $Z_t$ and ``noise'' event counts $k_t$ to sum to give the observed event counts $y_t \approx 3$. This means that an accurate representation of our posterior belief needs to be rich enough to model coupling between $\alpha$, $\beta$ and $x_{t+1}$.
+The previous example also serves to illustrate how the marginal posterior distribution for $\lambda$ can be multi-modal. This is also true for the conditional posterior distribution $P(\lambda_t \mid x_t=s, y_{1:t})$. Consider a singleton state space $S=\{s\}$ with an observation model $P(z_t \mid x_t=s)$ that emits an event count of $z_t=0$ or $z_t=100$ with uniform probability $1/2$. Suppose we have little prior knowledge about the noise rate $\lambda$. At $t=1$ we observe our first data $y_1=100$. We infer either $z_1=100$ hence $k_1=0$ or $z_1=0$ hence $k_1=100$. Therefore our conditional posterior belief for the noise rate $P(\lambda_1 \mid x_1=s, y_1)$ will be bimodal, having one mode near $\lambda=100$ and another mode near $\lambda=0$.
 
 \subsection{Approximating the posterior}
 We can regard the forward update of the posterior as $\phi_{t+1} = F \left( \phi_t, y_{t+1} \right)$ where the $\phi$ are abstract elements of some space $\Phi$ that is closed under application of the following operators:
@@ -306,7 +304,7 @@ We can regard the forward update of the posterior as $\phi_{t+1} = F \left( \phi
 \item a transition operator $T : \Phi \rightarrow \Phi$ that evolves the latent states forward one time step.
 \item a condition-on-observation operator $O_y : \Phi \rightarrow \Phi$, where $y$ is a new observation.
 \end{enumerate}
-If we have $T$ and $\{O_y\}_{y \in \nonnegint}$ then we can define $F(\Phi, y_{t+1}) = O_{y_{t+1}} \circ T (\Phi)$. Instead of representing the posterior exactly, we can select some approximation space $\Phi$ such that $P(x_t, \alpha, \beta \mid y_{1:t} ) \approx \phi_t \in \Phi$.
+If we have $T$ and $\{O_y\}_{y \in \nonnegint}$ then we can define $F(\Phi, y_{t+1}) = O_{y_{t+1}} \circ T (\Phi)$. Instead of representing the posterior exactly, we can select some approximation space $\Phi$ such that $P(x_t, \lambda \mid y_{1:t} ) \approx \phi_t \in \Phi$.
 
 \subsection{Discrete approximation of rate parameter $\lambda$}
 
