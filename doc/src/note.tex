@@ -357,7 +357,7 @@ The proof of this identity is elementary given the definitions of the three dist
 
 To simplify notation, define the non-negative real-valued tensor $c_{s^{\prime}, s, w, k, t}$ as
 \begin{equation}
-c_{s^{\prime}, s, w, k, t} \coloneqq A_{s^{\prime}, s} B_{k-w, s^{\prime}} \gamma_{s,t} \negbind(w ; \alpha_s,t}, \beta_{s,t}) \, .
+c_{s^{\prime}, s, w, k, t} \coloneqq A_{s^{\prime}, s} B_{k-w, s^{\prime}} \gamma_{s,t} \negbind(w ; \alpha_{s,t}, \beta_{s,t}) \, .
 \end{equation}
 
 The right hand side of the update equation~\ref{eqn:rawapproxupdate} is seen to be a finite mixture of Gamma distributions with non-negative weights:
@@ -370,7 +370,7 @@ The right hand side of the update equation~\ref{eqn:rawapproxupdate} is seen to 
 \sum_{w \in \nonnegint}
 c_{s^{\prime}, s, w, k, t}
 \gammad(\lambda^{\prime} ; \alpha_{s,t} + w, \beta_{s,t} + 1)
-\right]  \, . \label{eqn:rawapproxupdate}
+\right]  \, .
 \end{align}
 Since the right-hand side is a mixture of Gamma distributions, while the left hand side is but a single scaled Gamma distribution, the error involved in this approximation has the potential to be large.
 
