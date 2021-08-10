@@ -88,13 +88,13 @@ P(z_{1:T}, x_{0:T}) = P(x_0) \prod_{t=1, \ldots, T} P(z_t \mid x_t) P(x_t \mid x
 \end{equation}
 The conditional dependence structure of the HMM is illustrated in Figure~\ref{fig:hmm}.Each hidden state $x_t$ takes values in a finite state space $S = \{ s_1, \ldots, s_n \}$. Each generated observation $z_t$ is an event count in $\nonnegint$. The probability of transitioning from a state $x_t=s_j$ at time $t$ to a state $x_{t+1}=s_i$ at time $t+1$ is given by
 \begin{equation}
-P(x_{t+1}=s_i \mid x_t=s_j) = A_{i,j}
+P(x_{t+1}=s^{\prime} \mid x_t=s) = A_{s^{\prime},s}
 \end{equation}
-where $A$ is an $n \times n$ stochastic matrix. The probability of observing $z_t=k$ events at time $t$ is given by
+where $A$ is an $n \times n$ stochastic matrix indexed by the hidden states of $S$. The probability of observing $z_t=k$ events at time $t$ is given by
 \begin{equation}
-P(z_t=k \mid x_t=s_j) = B_{k, j}
+P(z_t=k \mid x_t=s) = B_{k, s}
 \end{equation}
-where column $B_j$ is a distribution for $k$ over $\nonnegint$.
+where for $s \in S$ the column $B_s$ is a distribution for $k$ over $\nonnegint$.
 
 % standard hmm
 
@@ -238,34 +238,64 @@ We will focus on the first task, ``filtering''.
 
 \subsection{Exact forward update}
 
-The goal is to derive a computationally tractable way to update the posterior of the latent variables $(x_t, \lambda)$ given the information from one new observation of an event count $y_{t+1}$. An exact update would be some function $F$ expressing the following relation:
+The goal is to derive a computationally tractable way to update the posterior of the latent variables $P(x_t, \lambda \mid y_{1:t})$ given the information from one new observation of an event count $y_{t+1}$. An exact update would be some function $F$ expressing the following relation:
 \begin{equation}
-P(x_{t+1}, \alpha, \beta \mid y_{1:t+1}) = F\left( P(x_t, \alpha, \beta \mid y_{1:t}), y_{t+1}\right)
+P(x_{t+1}, \lambda \mid y_{1:t+1}) = F\left( P(x_t, \lambda \mid y_{1:t}), y_{t+1}\right)
 \end{equation}
 
-We structure the derivation of the exact forward upate equation for the model's posterior distribution $P(x_{t+1}, \alpha, \beta \mid y_{1:{t+1}})$ following \citet*{russell2002artificial}:
+Although the rate parameter $\lambda$ does not vary in time, it can be notationally helpful to write $(x_t, \lambda_t)$ to denote the random variables $x_t$ and $\lambda_t=\lambda$ at time $t$. We can regard $(x_t, \lambda_t)$ as the hidden state of a HMM on the product state space $S \times \reals_{>0}$, with a transition model defined naturally from the two component stace spaces.
+
+We structure the derivation of the forward upate for the model's posterior distribution $P(x_{t+1}, \lambda_t \mid y_{1:{t+1}})$ following \citet*{russell2002artificial}.
 \begin{align}
-P(x_{t+1}, \alpha, \beta \mid y_{1:{t+1}})
-& = P(x_{t+1}, \alpha, \beta \mid y_{1:t}, y_{t+1}) \nonumber \\
-& = \frac{P(y_{t+1} \mid x_{t+1}, \alpha, \beta, y_{1:t}) P(x_{t+1}, \alpha, \beta \mid y_{1:t})}{P(y_{t+1} \mid y_{1:t})} \nonumber \\
-& \propto P(y_{t+1} \mid x_{t+1}, \alpha, \beta, y_{1:t}) P(x_{t+1}, \alpha, \beta \mid y_{1:t}) \nonumber \\
-& = P(y_{t+1} \mid x_{t+1}, \alpha, \beta) P(x_{t+1}, \alpha, \beta \mid y_{1:t}) , \label{eqn:rawforward}
+& P(x_{t+1}, \lambda_{t+1} \mid y_{1:{t+1}}) \nonumber \\
+= & P(x_{t+1}, \lambda_{t+1} \mid y_{1:t}, y_{t+1}) \nonumber \\
+= & P(y_{t+1} \mid y_{1:t})^{-1} P(y_{t+1} \mid x_{t+1}, \lambda_{t+1}, y_{1:t}) P(x_{t+1}, \lambda_{t+1} \mid y_{1:t}) \nonumber \\
+= & P(y_{t+1} \mid y_{1:t})^{-1} P(y_{t+1} \mid x_{t+1}, \lambda_{t+1}) P(x_{t+1}, \lambda_{t+1} \mid y_{1:t}) , \label{eqn:rawforward}
 \end{align}
-where we have applied Bayes' theorem, omitted a normalising constant, and used the conditional dependence structure of our model. We prepared an expression for the likelihood $P(y_{t+1} \mid x_{t+1}, \alpha, \beta)$ earlier. The second factor $P(x_{t+1}, \alpha, \beta \mid y_{1:t})$ needs to be rewritten as some function of $P(x_{t}, \alpha, \beta \mid y_{1:t})$. We condition on $x_t=s, \alpha=a, \beta=b$:
+where we have applied Bayes' theorem and the conditional dependence structure of the model.
+
+The first factor $P(y_{t+1} \mid y_{1:t})^{-1}$ does not depend upon our latent variables and can be dropped if we are only interested in estimating relative posterior probabilities for different $(x_t, \lambda)$. We keep this factor as later on we will need to perform careful normalisation.
+
+The second factor, the likelihood $P(y_{t+1} \mid x_{t+1}, \lambda_{t+1})$ is a discrete convolution between the noise-free HMM's observation model $P(z_{t+1}=w \mid x_{t+1}=s^{\prime}) = B_{k,s^{\prime}}$ and our noise model $P(k_t=w \mid \lambda_t) = \poissond(w ; \lambda_t)$, that is,
+\begin{equation}
+P(y_{t+1}=k \mid x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime})
+=
+\sum_{w \in \nonnegint} B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime}) \, .
+\end{equation}
+
+The latter factor $P(x_{t+1}, \lambda_{t+1} \mid y_{1:t})$ needs to be rewritten as a function of $P(x_{t}, \lambda_{t} \mid y_{1:t})$, which can be obtained from the transition model after conditioning on $x_t=s, \lambda_t=\lambda$:
 \begin{align}
-& P(x_{t+1}=s^{\prime}, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t}) \nonumber \\
-= & \sum_{s \in S} \int_{a, b} P(x_{t+1}=s^{\prime}, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid x_t=s, y_{1:t}, \alpha=a, \beta=b ) P(x_t=s, \alpha=a, \beta=b \mid y_{1:t}) \,d(a, b) \nonumber \\
-= & \sum_{s \in S} \int_{a, b} P(x_{t+1}=s^{\prime} \mid x_t=s) P(\alpha=\alpha^{\prime} \mid \alpha = a) P(\beta=\beta^{\prime} \mid \beta = b) P(x_t=s, \alpha=a, \beta=b \mid y_{1:t}) \,d(a, b) \nonumber \\
-= & \sum_{s \in S} P(x_{t+1}=s^{\prime} \mid x_t=s) P(x_t=s, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t}) \nonumber \\
-= & \sum_{s \in S} A_{s^{\prime}, s} P(x_t=s, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t} ) \label{eqn:advance}
+& P(x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime} \mid y_{1:t}) \nonumber \\
+= & \sum_{s \in S} \int_{\lambda \in \reals_{>0}}
+P(x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime} \mid y_{1:t}, x_t=s, \lambda_t=\lambda ) P(x_t=s, \lambda_t=\lambda \mid y_{1:t} ) \,d\lambda \nonumber \\
+= & \sum_{s \in S} \int_{\lambda \in \reals_{>0}}
+P(x_{t+1}=s^{\prime}, \mid x_t=s)
+P(\lambda_{t+1}=\lambda^{\prime} \mid \lambda_t=\lambda ) P(x_t=s, \lambda_t=\lambda \mid y_{1:t} ) \,d\lambda \nonumber \\
+= & \sum_{s \in S}
+P(x_{t+1}=s^{\prime}, \mid x_t=s)
+P(x_t=s, \lambda_t=\lambda^{\prime} \mid y_{1:t} ) \nonumber \\
+= & \sum_{s \in S}
+A_{s^{\prime}, s}
+P(x_t=s, \lambda_t=\lambda^{\prime} \mid y_{1:t} ) \nonumber \\
+\label{eqn:advance}
 \end{align}
-Combining the proportional relation~\ref{eqn:rawforward} with equation~\ref{eqn:advance} and the expression for the likelihood~\ref{eqn:hybridobs} gives
+
+TODO fix this up:
+
+Combining equation~\ref{eqn:rawforward} with equation~\ref{eqn:advance} and the expression for the likelihood~\ref{eqn:hybridobs} gives
 \begin{align}
-& P(x_{t+1}=s^{\prime}, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:{t+1}}) \nonumber \\
-\propto &
-\left[ B_{k,s^{\prime}} * \negbind(k ; \alpha^{\prime}, \beta^{\prime}) \right] \Bigr \rvert_{k=y_{t+1}}
-\sum_{s \in S} A_{s^{\prime}, s} P(x_t=s, \alpha=\alpha^{\prime}, \beta=\beta^{\prime} \mid y_{1:t} ) \, .
-\end{align}
+& P(x_{t+1}=s^{\prime}, \lambda_{t+1}=\lambda^{\prime} \mid y_{1:{t+1}}) \nonumber \\
+= &
+\frac{1}{P(y_{t+1} \mid y_{1:t})}
+\left[
+\sum_{w \in \nonnegint}
+B_{k-w,s^{\prime}} \poissond(w ; \lambda^{\prime})
+\sum_{s \in S}
+A_{s^{\prime}, s}
+P(x_t=s, \lambda_t=\lambda^{\prime} \mid y_{1:t} )
+\right]
+\end{aligh}
+
 Note that the discrete convolution evaluates to a constant scalar value, so this gives an expression for $P(x_{t+1}=s^{\prime}, \alpha, \beta \mid y_{1:t+1})$ (up to some normalising constant) as an linear combination of $P(x_t=s, \alpha, \beta \mid y_{1:t})$ where $s$ are possible predecessor states of the successor state $s^{\prime}$.
 
 One complication impeding exact computation is the coupling between the latent variables $\alpha, \beta$ and $x_{t+1}$ after conditioning on $y_{t+1}$. For a simple example of this, consider a state space $S$ consisting of two hidden states $s_1$ and $s_2$ equipped with observation models $P(z_t \mid x_t=s_1)$ and $P(z_t \mid x_t=s_2)$ with $\E \left[ P(z_t \mid x_t=s_1) \right] = 1$ and $\E \left[ P(z_t \mid x_t=s_2) \right] = 2$. Assume transitions between $s_1$ and $s_2$ are impossible, but that we have very little prior knowledge about the magnitude of $\lambda$, the rate of the Poisson noise, or the initial state $x_0$. Suppose we observe event data $y_1, \ldots, y_T$ over a period of time, and learn that the average event count $\sum_{t=1}^T y_t \approx 3$.  Then if the system were dwelling in state $x_t=s_1$ we would infer that $\lambda \approx 2$, and alternatively if system had occupied state $x_t=s_2$ we would infer that $\lambda \approx 1$, in order for the expected rate of ``signal'' event counts $Z_t$ and ``noise'' event counts $k_t$ to sum to give the observed event counts $y_t \approx 3$. This means that an accurate representation of our posterior belief needs to be rich enough to model coupling between $\alpha$, $\beta$ and $x_{t+1}$.
