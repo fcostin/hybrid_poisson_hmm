@@ -60,7 +60,9 @@
 \maketitle
 
 \begin{abstract}%
-This paper considers a hybrid hidden Markov model for event counts with an additive Poisson noise term. 
+*DRAFT*
+
+We consider a hidden Markov model for event counts with an additive Poisson noise term. The model is otherwise assumed to have a finite state space. Computing the posterior distrubtion is intractable. Instead, we define an approximation scheme for the posterior distribution by approximating the conditional posterior distribution for the Poisson rate parameter $\lambda$ with one scaled Gamma distribution per discrete state in the model's state space. We derive an approximate forward algorithm to advance approximate posterior one timestep. The approximate forward update algorithm minimises the KL-divergence from the true forward-updated approximate posterior distribution (in general, a mixture of Gamma distributions) to its projection back as a single Gamma distribution in the approximation space.
 \end{abstract}
 
 \section{Summary}
@@ -431,7 +433,7 @@ Therefore the scaling coefficient must be
 \begin{equation}
 \gamma_{s^{\prime},t+1} = Z_{t,s^{\prime}} \, .
 \end{equation}
-The remaining task is to derive expressions for $(\alpha_{s^{\prime},t+1}, \beta_{s^{\prime},t+1})$.
+The remaining task is to derive expressions for $(\alpha_{s^{\prime},t+1}, \beta_{s^{\prime},t+1})$, which we can achieve by application of the following theorem:
 
 \begin{thm}
 Let $p(\lambda)$ be a finite mixture of Gamma distributions,
@@ -444,7 +446,7 @@ q(\lambda \mid \theta ) = \gammad(\lambda \mid \theta) \, .
 \end{equation}
 Then the best approximation of $p(\lambda)$ by $q(\lambda \mid \theta)$ in the sense of KL-divergence from $q$ to $p$,
 \begin{equation}
-\theta^{*} = \argmin_{\theta} \int_{\lambda} p(\lambda) \log \left( \frac{q(\lambda \mid \theta) }{ p(\lambda } \right) \, d\lambda ,
+\theta^{*} = \argmin_{\theta} \int_{\lambda} p(\lambda) \log \left( \frac{q(\lambda \mid \theta) }{ p(\lambda) } \right) \, d\lambda ,
 \end{equation}
 is characterised by $\theta^* = (\alpha^*, \beta^*)$ satisfying the constraints:
 \begin{alignat}{3}
@@ -457,9 +459,127 @@ is characterised by $\theta^* = (\alpha^*, \beta^*)$ satisfying the constraints:
 && = \sum_j c_j \left( \psi(\alpha_j) - \log(\beta_j) \right)
 && = \E_p \left[ \log(\lambda) \right]
 \end{alignat}
+where $\psi$ denotes the digamma function.
 
 \end{thm}
 \begin{proof}
+
+Define $L(\theta) : \reals_{>0} \times \reals_{>0} \rightarrow \reals_{\geq 0}$ as
+\begin{equation}
+L(\theta) \coloneqq 
+\int_{\lambda} p(\lambda) \log \left( \frac{q(\lambda \mid \theta) }{ p(\lambda) } \right) \, d\lambda .
+\end{equation}
+Provided $L$ is sufficiently smooth, local extreme points of $L$ occur in the interior where the gradient vanishes, so set $\theta^*$ as
+\begin{equation}
+D_{\theta} L(\theta) \bigr \rvert_{\theta=\theta^*} = \bar{0}
+\end{equation}
+Provided the argument of the integral is sufficiently smooth, we can commute the gradient inside the integral:
+\begin{align}
+D_{\theta}
+\int_{\lambda} p(\lambda) \log \left( \frac{q(\lambda \mid \theta) }{ p(\lambda) } \right) \, d\lambda
+& =
+\int_{\lambda}
+D_{\theta}
+\left[
+p(\lambda) \log \left( \frac{q(\lambda \mid \theta) }{ p(\lambda) } \right)
+\right] \, d\lambda \\
+& =
+\int_{\lambda}
+p(\lambda)
+\frac{p(\lambda)}{q(\lambda \mid \theta)}
+\frac{1}{p(\lambda)}
+D_{\theta} \left[ q(\lambda \mid \theta) \right]
+\, d\lambda \\
+& =
+\int_{\lambda}
+\frac{p(\lambda)}{q(\lambda \mid \theta)}
+D_{\theta} \left[ q(\lambda \mid \theta) \right]
+\, d\lambda
+\end{align}
+Hence the vanishing gradient of $L$ at $\theta^*$ can be expressed equivalently as the two constraints
+\begin{align}
+\int_{\lambda}
+\frac{p(\lambda)}{q(\lambda \mid \theta)}
+\frac{\partial}{\partial \alpha} \left[ q(\lambda \mid \theta) \right]
+\, d\lambda \bigr \vert_{\theta=\theta^*} & = 0 \, , \\
+\int_{\lambda}
+\frac{p(\lambda)}{q(\lambda \mid \theta)}
+\frac{\partial}{\partial \beta} \left[ q(\lambda \mid \theta) \right]
+\, d\lambda \bigr \vert_{\theta=\theta^*} & = 0 \, . \\
+\end{align}
+The partial derivative of $q(\lambda \mid \theta)$ with respect to $\beta$ is
+\begin{align}
+\frac{\partial}{\partial \beta} q(\lambda \mid \theta)
+= & 
+\frac{\partial}{\partial \beta} \left( \frac{\beta^{\alpha}}{\Gamma(\alpha)} \lambda^{\alpha-1} e^{-\beta \lambda} \right) \\
+= &
+(\alpha) \frac{\beta^{\alpha-1}}{\Gamma(\alpha)} \lambda^{\alpha-1} e^{-\beta \lambda}
++ 
+(-\lambda) \frac{\beta^{\alpha}}{\Gamma(\alpha)} \lambda^{\alpha-1} e^{-\beta \lambda}
+\\
+= & \left( \frac{\alpha}{\beta} - \lambda \right) q(\lambda \mid \theta) \, .
+\end{align}
+Substituting back into the first constraint gives
+\begin{equation}
+\int_{\lambda}
+\frac{p(\lambda)}{q(\lambda \mid \theta)}
+\left( \frac{\alpha}{\beta} - \lambda \right) q(\lambda \mid \theta)
+\, d\lambda \bigr \vert_{\theta=\theta^*} = 0 \, , \\
+\end{equation}
+so provided $q(\lambda \mid \theta)$ is nonzero we have
+\begin{equation}
+\int_{\lambda}
+p(\lambda)
+\left( \frac{\alpha}{\beta} - \lambda \right)
+\, d\lambda \bigr \vert_{\theta=\theta^*} =
+\int_{\lambda}
+p(\lambda)
+\left( \frac{\alpha^{*}}{\beta^{*}} - \lambda \right)
+\, d\lambda =
+0 \, ,
+\end{equation}
+which, combined with the property that expected value of any Gamma distribution $\gammad(\lambda \mid \alpha, \beta)$ is $\frac{\alpha}{\beta}$, gives the first characterising constraint upon $\theta^{*}$.
+
+For the second characterising constraint, the partial derivative of $q(\lambda \mid \theta)$ with respect to $\alpha$ is
+\begin{align}
+\frac{\partial}{\partial \alpha} q(\lambda \mid \theta)
+= & 
+\frac{\partial}{\partial \alpha} \left( \frac{\beta^{\alpha}}{\Gamma(\alpha)} \lambda^{\alpha-1} e^{-\beta \lambda} \right) \\
+= & \left( \frac{-\Gamma^{\prime}(\alpha)}{\Gamma(\alpha)} + \log(\lambda) + \log(\beta) \right) q(\lambda \mid \theta) \, .
+\end{align}
+Substituting back into the second constraint gives
+\begin{equation}
+\int_{\lambda}
+\frac{p(\lambda)}{q(\lambda \mid \theta)}
+\left( \frac{-\Gamma^{\prime}(\alpha)}{\Gamma(\alpha)} + \log(\lambda) + \log(\beta) \right) q(\lambda \mid \theta)
+\, d\lambda \bigr \vert_{\theta=\theta^*} = 0 \, , \\
+\end{equation}
+so again, provided $q(\lambda \mid \theta)$ is nonzero,
+\begin{equation}
+\int_{\lambda}
+p(\lambda)
+\left( \frac{-\Gamma^{\prime}(\alpha)}{\Gamma(\alpha)} + \log(\lambda) + \log(\beta) \right)
+\, d\lambda \bigr \vert_{\theta=\theta^*} = 0 \, , \\
+\end{equation}
+which rearranges to
+\begin{equation}
+\int_{\lambda}
+p(\lambda) \log(\lambda) \, d\lambda
+=
+\int_{\lambda}
+p(\lambda)
+\left( \frac{\Gamma^{\prime}(\alpha^*)}{\Gamma(\alpha^*)} - \log(\beta^*) \right)
+\, d\lambda
+\end{equation}
+where the fraction $\frac{\Gamma^{\prime}(\alpha^*)}{\Gamma(\alpha^*)} = \psi(\alpha^*)$ is recognised as the digamma aka 0-th order polygamma function. Finally, we use the following standard identity for the expected value of $\log(\lambda)$ for a Gamma distribution,
+\begin{equation}
+\int_{\lambda}
+\gammad(\lambda ; \alpha, \beta ) \log(\lambda) \, d\lambda = \psi(\alpha) - \log(\beta) \; .
+\end{equation}
+This gives the second characterising constraint upon $\theta^*$ in the statement of the theorem.
+
+Apart from a lot of loose ends to check edge cases and give a convincing argument for why the alleged extreme point is a local minima, and in fact the global minimum, this completes a sketch of the proof.
+
 \end{proof}
 
 
@@ -471,11 +591,11 @@ is characterised by $\theta^* = (\alpha^*, \beta^*)$ satisfying the constraints:
 \item comment that our approximation space may not be closed under this operation (done)
 \item propose how to repair the situation by projecting back into the approximation space (done)
 \item propose minimising the KL divergence from the finite mixture to the element of the approximation space (done)
-\item sketch how we can minimise by taking the derivative and setting it to the zero vector
-\item plug in our definition of the approximation scheme from the previous subsection
-\item compute some partial derivatives
-\item do a little algebra and derive some pretty constraints that characterise a best approximation
-\item do a little more algebra to define explicit update equationsfor our approximation forward update
+\item sketch how we can minimise by taking the derivative and setting it to the zero vector (done)
+\item plug in our definition of the approximation scheme from the previous subsection (done)
+\item compute some partial derivatives (done)
+\item do a little algebra and derive some pretty constraints that characterise a best approximation (done, roughly)
+\item do a little more algebra to define explicit update equations for our approximation forward update
 \item comment about computational cost
 \item comment about approximation error
 \end{enumerate}
