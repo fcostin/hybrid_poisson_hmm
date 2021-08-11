@@ -7,3 +7,10 @@
 /doc/src/*.blg
 /doc/src/*.bbl
 /doc/src/*.fdb_latexmk
+/venv/*
+**/__pycache__/*
+/.idea
+/build/*
+/lib/gamma_approx/_gammaapprox.c
+/lib/gamma_approx/_gammaapprox.cpython-38-x86_64-linux-gnu.so
+/lib/gamma_approx/_gammaapprox.html
