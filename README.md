@@ -53,7 +53,7 @@ must be considerable overhead in the python/cython
 wrapper bindings. This could use further investigation.
 
 The batched implementation can fit 320k randomly-sized
-mixtures, each consistenting of 1 -- 20 component Gamma
+mixtures, each consisting of 1 -- 20 component Gamma
 distributions in less than 0.175 seconds on an AMD 2200G
 CPU, using a single core. That's a running time of around
 540 nanoseconds per mixture fit.
