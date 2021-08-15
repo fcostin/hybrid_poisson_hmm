@@ -101,10 +101,14 @@ cpdef FitResult fit_gamma_dist_to_gamma_mixture(
 
     where
 
-    p = sum_i c_i \frac{a_i}{b_i} is the input mixture to approximate, and
+        p(\lambda) = sum_i c_i Gamma(\lambda ; alpha=a_i, beta=b_i)
+
+    is the input mixture to approximate, and
 
     theta = (alpha, beta), alpha>0, beta>0 are the parameters of the
-    approximating Gamma distribution q.
+    approximating Gamma distribution
+
+        q(\lambda | theta) = Gamma(\lambda | alpha, beta)
 
     Minimising the KL divergence reduces to finding a Gamma distribution q that
     satisfies the constraints:
