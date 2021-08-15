@@ -11,11 +11,43 @@ of Gamma distributions with a single Gamma distribution.
 
 ### Status
 
-Prototype
+Prototype. Library API may change.
 
 ### License
 
 BSD
+
+### Quickstart for local development
+
+1.	clone the repo
+2.	ensure you have a dev environment with a C compiler
+	that Cython can use
+3.	Install deps, build the library and run tests:
+
+```
+python3 -m venv venv
+source venv/bin/active
+pip install -r requirements.txt
+make clean
+make lib
+python -m pytest lib
+```
+
+### Usage
+
+The extension library `gamma_approx/_gammaapprox` defines
+the following functions:
+
+*	`fit_gamma_dist_to_gamma_mixture`
+*	`fit_batch_gamma_dists_to_gamma_mixtures`
+
+The former function solves a single Gamma mixture
+approximation problem, while the latter takes a batch of
+many problems and solves them iteratively. For an example
+of usage of the batched fit, see the test. The API for
+both functions is defined in the
+`lib/gamma_approx/_gammaapprox.pyx` Cython source file.
+
 
 ### Description:
 
