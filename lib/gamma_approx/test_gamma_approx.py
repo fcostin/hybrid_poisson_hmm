@@ -56,12 +56,14 @@ def make_batch_problems(rng, n_mixtures):
 def test_fuzztest_mixture_fitting(rng):
 
     n_trials = 100
+    n_mixtures = 800
 
     acc_iters = 0
     acc_mixtures = 0
 
+    rel_errors = numpy.zeros((n_trials, n_mixtures, ), dtype=numpy.float64)
+
     for trial_i in range(n_trials):
-        n_mixtures = 800
 
         mix_lengths, mix_cs, mix_alphas, mix_betas = make_batch_problems(rng, n_mixtures)
 
@@ -76,7 +78,7 @@ def test_fuzztest_mixture_fitting(rng):
             out_alphas,
             out_betas,
         )
-        assert result['status'] == 0
+        assert result['status'] == 0, repr(result)
 
         acc_iters += result['iters']
         acc_mixtures += n_mixtures
@@ -85,33 +87,41 @@ def test_fuzztest_mixture_fitting(rng):
         end = 0
         for mix_i in range(n_mixtures):
             end = end + mix_lengths[mix_i]
+
+            # Compute expected rate and expected log rate of mixture
             c = mix_cs[start:end]
             alphas = mix_alphas[start:end]
             betas = mix_betas[start:end]
-
-            alpha_star = out_alphas[mix_i]
-            beta_star = out_betas[mix_i]
-
             expected_rate = expected_rate_of_gamma_mixture(c, alphas, betas)
             expected_log_rate = expected_log_rate_of_gamma_mixture(c, alphas, betas)
 
+            # Extract parameters of single Gamma fit
+            alpha_star = out_alphas[mix_i]
+            beta_star = out_betas[mix_i]
             theta_star = numpy.asarray([alpha_star, beta_star])
 
-            nr_okay = is_soln_okay(theta_star, expected_rate, expected_log_rate)
-            assert nr_okay
+            # Measure relative approximation error of expected raet & expected log rate.
+            rel_errors[trial_i, mix_i] = relative_error(theta_star, expected_rate, expected_log_rate)
 
             start = start + mix_lengths[mix_i]
 
     print('total iters %r' % (acc_iters, ))
     print('mean iters per mix %r' % (acc_iters / acc_mixtures, ))
 
+    max_rel_error = numpy.amax(rel_errors)
+    mean_rel_error = numpy.mean(rel_errors)
 
-def is_soln_okay(theta, expected_rate, expected_log_rate):
+    print('max_rel_error %r' % (max_rel_error,))
+    print('mean_rel_error per mix %r' % (mean_rel_error,))
+
+    assert max_rel_error <= 1.0e-5
+
+
+def relative_error(theta, expected_rate, expected_log_rate):
     alpha_tilde, beta_tilde = theta
     tilde_rate = alpha_tilde / beta_tilde
     tilde_log_rate = digamma(alpha_tilde) - numpy.log(beta_tilde)
-    return (
-            numpy.isclose(tilde_rate, expected_rate)
-            and
-            numpy.isclose(tilde_log_rate, expected_log_rate)
+    return max(
+        abs((expected_rate - tilde_rate) / expected_rate),
+        abs((expected_log_rate - tilde_log_rate) / expected_log_rate),
     )
