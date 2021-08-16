@@ -5,6 +5,7 @@ from scipy.special import digamma
 from ._gammaapprox import (
     fit_batch_gamma_dists_to_gamma_mixtures,
     fit_gamma_dist_to_gamma_mixture,
+    rough_fit_batch_gamma_dists_to_gamma_mixtures,
 )
 
 
