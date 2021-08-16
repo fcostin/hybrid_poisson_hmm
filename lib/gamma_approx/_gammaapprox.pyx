@@ -107,8 +107,102 @@ cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
         out_alpha[i] = hresult.x
         out_beta[i] = hresult.x / expected_lambda
         result.status |= (FailedToConverge * hresult.error)
-        result.n_issues += 1
+        result.n_issues += hresult.error
         result.iters += hresult.iters
+        start += m
+    return result
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef BatchFitResult rough_fit_batch_gamma_dists_to_gamma_mixtures(
+        const index_t[:] lengths,
+        const dtype_t[:] c,
+        const dtype_t[:] a,
+        const dtype_t[:] b,
+        dtype_t[:] out_alpha,
+        dtype_t[:] out_beta) nogil:
+    """
+    rough_fit_batch_gamma_dists_to_gamma_mixtures is a variant of
+    fit_batch_gamma_dists_to_gamma_mixtures which performs exactly two
+    Halley-method iterations when approximating the inverse of
+    f(x) = digamma(x) - log(x).
+
+    Normally, we perform a variable number of Halley-method iterations based on
+    an error estimate, with a mean of slightly fewer than two iterations.
+
+    Hardcoding two iterations and removing all logic controlling iterations and
+    convgergence checks reduces the running time by around 11%.
+    """
+    cdef index_t n_mixtures, i, j, n, m, start, end
+    cdef dtype_t expected_lambda, expected_log_lambda, acc_c, cj, aj, bj, ratej, y, x
+    cdef BatchFitResult result
+    cdef HalleyStep hs
+
+    result.status = StatusInvalidInput
+    result.iters = 0
+    result.n_issues = 0
+
+    # Sanity check input shapes conform with length packing.
+    n_mixtures = lengths.shape[0]
+    n = 0
+    for i in range(n_mixtures):
+        n += lengths[i]
+    result.n_issues += (n != c.shape[0])
+    result.n_issues += (n != a.shape[0])
+    result.n_issues += (n != b.shape[0])
+    result.n_issues += (n_mixtures != out_alpha.shape[0])
+    result.n_issues += (n_mixtures != out_beta.shape[0])
+
+    if result.n_issues > 0:
+        return result
+
+    # Sanity check data is in domain
+    for i in range(n):
+        result.n_issues += (a[i] <= 0.0)
+        result.n_issues += (b[i] <= 0.0)
+        result.n_issues += (c[i] < 0.0)
+
+    # Sanity check mixture coefficients are convex combinations
+    start = 0
+    end = 0
+    for i in range(n_mixtures):
+        m = lengths[i]
+        acc_c = 0.0
+        for j in range(m):
+            acc_c += c[start + j]
+        start += m
+        result.n_issues += fabs(acc_c - 1.0) > 1e-8
+
+    if result.n_issues > 0:
+        return result
+
+    result.status = StatusOK
+    start = 0
+    end = 0
+    for i in range(n_mixtures):
+        m = lengths[i]
+        expected_lambda = 0.0
+        expected_log_lambda = 0.0
+        for j in range(m):
+            cj = c[start+j] # TODO ensure cab are adjacent in memory
+            aj = a[start+j] # force structurally using layout of input
+            bj = b[start+j]
+            ratej = aj / bj
+            expected_lambda += cj * ratej
+            expected_log_lambda += cj * (_approx_digamma(aj) - log(bj))
+        y = expected_log_lambda - log(expected_lambda)
+
+        x = rough_inverse_f(y)
+        hs = _approx_f_halley_step(x, y)
+        x += hs.step
+        hs = _approx_f_halley_step(x, y)
+        x += hs.step
+
+        out_alpha[i] = x
+        out_beta[i] = x / expected_lambda
+        result.iters += 2
         start += m
     return result
 
@@ -435,11 +529,41 @@ cdef inline HalleyStep _approx_f_halley_step(dtype_t x0, dtype_t y) nogil:
     # to reduce the problem for small x to a problem for large x.
     # Differentiating the recurrence produces similar recurrences for the first
     # and second derivatives.
-    while x < 7:
-        digamma_0 -= 1.0 / x
-        digamma_1 += 1.0 / (x * x)
-        digamma_2 -= 2.0 / (x * x * x)
-        x += 1
+
+    # Minor optimisation (around -0.7% running time of a rough batch fit): this
+    # used to be a "while x < 7:" loop. x must be positive, so the loop runs at
+    # most 7 times. Most values of x we see are small. If we run the loop
+    # exactly 7 times regardless of the value of x then we completely eliminate
+    # branches at the cost of occasionally doing some unnecessary work.
+    digamma_0 -= 1.0 / x
+    digamma_1 += 1.0 / (x * x)
+    digamma_2 -= 2.0 / (x * x * x)
+    x += 1
+    digamma_0 -= 1.0 / x
+    digamma_1 += 1.0 / (x * x)
+    digamma_2 -= 2.0 / (x * x * x)
+    x += 1
+    digamma_0 -= 1.0 / x
+    digamma_1 += 1.0 / (x * x)
+    digamma_2 -= 2.0 / (x * x * x)
+    x += 1
+    digamma_0 -= 1.0 / x
+    digamma_1 += 1.0 / (x * x)
+    digamma_2 -= 2.0 / (x * x * x)
+    x += 1
+    digamma_0 -= 1.0 / x
+    digamma_1 += 1.0 / (x * x)
+    digamma_2 -= 2.0 / (x * x * x)
+    x += 1
+    digamma_0 -= 1.0 / x
+    digamma_1 += 1.0 / (x * x)
+    digamma_2 -= 2.0 / (x * x * x)
+    x += 1
+    digamma_0 -= 1.0 / x
+    digamma_1 += 1.0 / (x * x)
+    digamma_2 -= 2.0 / (x * x * x)
+    x += 1
+
     x -= 1.0 / 2.0
     x_1 = 1.0 / x
     x_2 = x_1 * x_1
