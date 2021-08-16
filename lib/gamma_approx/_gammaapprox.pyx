@@ -592,12 +592,16 @@ cdef inline HalleyStep _approx_f_halley_step(dtype_t x0, dtype_t y) nogil:
 # Adapted from Mark Johnson's digamma.c
 # ref: http://web.science.mq.edu.au/~mjohnson/code/digamma.c
 @cython.cdivision(True)
-cdef inline dtype_t _approx_digamma(dtype_t x) nogil except 0.0:
-    cdef dtype_t result = 0, xx, xx2, xx4
-    while x < 7:
-        result -= 1.0/x
-        x += 1
-    x -= 1.0/2.0
+cdef inline dtype_t _approx_digamma(const dtype_t x0) nogil except 0.0:
+    cdef dtype_t result = 0, x, xx, xx2, xx4
+
+    # This used to be a "while x < 7" loop. If most x values are small, then we need
+    # to do 7 iterations anyway. This form has no branches, it is also one big
+    # expression that doesn't suggest a particular eval order. Let the compiler
+    # and the hardware decide.
+    result = -1.0/x0 - 1.0/(x0+1.0) -1.0/(x0+2.0) -1.0/(x0+3.0) -1.0/(x0+4.0) -1.0/(x0+5.0) -1.0/(x0+6.0)
+
+    x = x0 + 7.0 - 1.0/2.0
     xx = 1.0/x
     xx2 = xx*xx
     xx4 = xx2*xx2
