@@ -27,10 +27,12 @@ cdef struct FitResult:
 
 DEF StatusOK = 0
 DEF StatusInvalidInput = 1
+DEF FailedToConverge = 2
 
 cdef struct BatchFitResult:
     int status
     size_t iters
+    size_t n_issues
 
 
 @cython.cdivision(True)
@@ -43,43 +45,71 @@ cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
         const dtype_t[:] b,
         dtype_t[:] out_alpha,
         dtype_t[:] out_beta) nogil:
-    cdef index_t n_mixtures, i, n, start, end
+    cdef index_t n_mixtures, i, j, n, m, start, end
+    cdef dtype_t expected_lambda, expected_log_lambda, acc_c, cj, aj, bj, ratej, y
     cdef BatchFitResult result
+    cdef HalleyResult hresult
+
     result.status = StatusInvalidInput
     result.iters = 0
+    result.n_issues = 0
 
-    # Sanity check length packing
+    # Sanity check input shapes conform with length packing.
     n_mixtures = lengths.shape[0]
     n = 0
     for i in range(n_mixtures):
         n += lengths[i]
-    if n != c.shape[0]:
-        return result
-    if n != a.shape[0]:
-        return result
-    if n != b.shape[0]:
-        return result
-    if n_mixtures != out_alpha.shape[0]:
-        return result
-    if n_mixtures != out_beta.shape[0]:
+    result.n_issues += (n != c.shape[0])
+    result.n_issues += (n != a.shape[0])
+    result.n_issues += (n != b.shape[0])
+    result.n_issues += (n_mixtures != out_alpha.shape[0])
+    result.n_issues += (n_mixtures != out_beta.shape[0])
+
+    if result.n_issues > 0:
         return result
 
+    # Sanity check data is in domain
+    for i in range(n):
+        result.n_issues += (a[i] <= 0.0)
+        result.n_issues += (b[i] <= 0.0)
+        result.n_issues += (c[i] < 0.0)
+
+    # Sanity check mixture coefficients are convex combinations
     start = 0
     end = 0
     for i in range(n_mixtures):
-        end += lengths[i]
-        fit_result = fit_gamma_dist_to_gamma_mixture(
-            c[start:end],
-            a[start:end],
-            b[start:end],
-        )
-        result.iters += fit_result.iters
-        if fit_result.error:
-            return result
-        out_alpha[i] = fit_result.alpha
-        out_beta[i] = fit_result.beta
-        start += lengths[i]
+        m = lengths[i]
+        acc_c = 0.0
+        for j in range(m):
+            acc_c += c[start + j]
+        start += m
+        result.n_issues += fabs(acc_c - 1.0) > 1e-8
+
+    if result.n_issues > 0:
+        return result
+
     result.status = StatusOK
+    start = 0
+    end = 0
+    for i in range(n_mixtures):
+        m = lengths[i]
+        expected_lambda = 0.0
+        expected_log_lambda = 0.0
+        for j in range(m):
+            cj = c[start+j] # TODO ensure cab are adjacent in memory
+            aj = a[start+j] # force structurally using layout of input
+            bj = b[start+j]
+            ratej = aj / bj
+            expected_lambda += cj * ratej
+            expected_log_lambda += cj * (_approx_digamma(aj) - log(bj))
+        y = expected_log_lambda - log(expected_lambda)
+        hresult = inverse_digamma_minus_log_halley(y, x0=rough_inverse_f(y))
+        out_alpha[i] = hresult.x
+        out_beta[i] = hresult.x / expected_lambda
+        result.status |= (FailedToConverge * hresult.error)
+        result.n_issues += 1
+        result.iters += hresult.iters
+        start += m
     return result
 
 
@@ -157,13 +187,9 @@ cpdef FitResult fit_gamma_dist_to_gamma_mixture(
 
     expected_lambda = expected_rate_of_gamma_mixture(c, a, b)
     expected_log_lambda = expected_log_rate_of_gamma_mixture(c, a, b)
-
     y = expected_log_lambda - log(expected_lambda)
 
-    # Naive guess of alpha^* as convex combination of mixture alphas.
-    x0 = fancyish_initial_guess(y, c, a)
-
-    hresult = inverse_digamma_minus_log_halley(y, x0=x0)
+    hresult = inverse_digamma_minus_log_halley(y, x0=rough_inverse_f(y))
     a_star = hresult.x
     b_star = a_star / expected_lambda
     result.alpha = a_star
@@ -174,55 +200,53 @@ cpdef FitResult fit_gamma_dist_to_gamma_mixture(
 
 
 @cython.cdivision(True)
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef inline dtype_t fancyish_initial_guess(const dtype_t y, const dtype_t[:] c, const dtype_t[:] a) nogil:
-    cdef dtype_t x0
-    cdef index_t n
-    n = c.shape[0]
-    if y >= 0.0:
-        # Naive guess of alpha^* as convex combination of mixture alphas.
-        x0 = 0.0
-        for i in range(n):
-            x0 += c[i] * a[i]
-    else:
-        # Explanation of this approximation:
-        #
-        # Let x_i range over the grid numpy.geomspace(0.001, 100.0, 3000)
-        # Define y_i := f(x_i) for f(x) = digamma(x) - log(x)
-        #
-        # Note that we used scipy's digamma implementation to define the
-        # data y_i, unrelated to the digamma approximations in this file.
-        #
-        # Assume the relationship between x and y can be approximated for
-        # x in [0.001, 100] by:
-        #
-        # log(x) = a + b log(-1/y)
-        #
-        # This isn't motivated by theory, but empirically, by graphing
-        # log(x) as a function of y and making a guess.
-        #
-        # Fit parameters (a, b) using least-squares regression evaluated
-        # over the points y_i to approximate the target function log(x_i).
-        #
-        # Then x is approximated by exp(a + b log(-1/y)) = exp(a) (-y)^b
-        #
-        # The parameters (a, b) found from the procedure above are:
-        #
-        # a = -0.42338657
-        # b =  0.9256158
-        #
-        # We can rearrange for x0 to give:  x0 approx 0.6548 * pow(-y, -0.9256)
-        #
-        # This gives us a relatively cheap way to initialise a guess before
-        # starting Halley's method iterations when attempting to invert f.
-        #
-        # After switching to this initial guess for negative y, instead of
-        # the naive guess used above, it reduced the mean number of Halley's
-        # method iterations required to invert f on a testbed of 80,000
-        # small mixture approximation problems from 3.07 to 2.00.
-        x0 = 0.6548254483045827 * pow(-y, -0.9256158)
-    return x0
+cdef inline dtype_t rough_inverse_f(const dtype_t y) nogil:
+    # Approximate inverse f^-1(y) where f(x) = digamma(x) - log(x)
+    # assumption: y < 0
+    #
+    # Explanation of this approximation:
+    #
+    # Let x_i range over the grid numpy.geomspace(0.001, 100.0, 3000)
+    # Define y_i := f(x_i) for f(x) = digamma(x) - log(x)
+    #
+    # Note that we used scipy's digamma implementation to define the
+    # data y_i, unrelated to the digamma approximations in this file.
+    #
+    # Assume the relationship between x and y can be approximated for
+    # x in [0.001, 100] by:
+    #
+    # log(x) = a + b log(-1/y)
+    #
+    # This isn't motivated by theory, but empirically, by graphing
+    # log(x) as a function of y and making a guess.
+    #
+    # Fit parameters (a, b) using least-squares regression evaluated
+    # over the points y_i to approximate the target function log(x_i).
+    #
+    # Then x is approximated by exp(a + b log(-1/y)) = exp(a) (-y)^b
+    #
+    # The parameters (a, b) found from the procedure above are:
+    #
+    # a = -0.42338657
+    # b =  0.9256158
+    #
+    # We can rearrange for x0 to give:  x0 approx 0.6548 * pow(-y, -0.9256)
+    #
+    # This gives us a relatively cheap way to initialise a guess before
+    # starting Halley's method iterations when attempting to invert f.
+    #
+    # After switching to this initial guess for negative y, instead of
+    # the naive guess used above, it reduced the mean number of Halley's
+    # method iterations required to invert f on a testbed of 80,000
+    # small mixture approximation problems from 3.07 to 2.00.
+    return 0.6548254483045827 * pow(-y, -0.9256158)
+
+
+@cython.cdivision(True)
+cdef inline dtype_t rough_f(const dtype_t x) nogil:
+    # Approximate f(x) = digamma(x) - log(x)
+    # assumption: x > 0
+    return -1.0 * pow(1.5271245224038152 * x , -1.0803618520772873)
 
 
 @cython.cdivision(True)
