@@ -2,9 +2,11 @@ from setuptools import find_packages, setup, Extension
 from Cython.Build import cythonize
 
 setup(
+    name = "gamma_approx",
     packages = find_packages("lib"),
     package_dir = {"": "lib"},
     package_data = {},
+    python_requires=">=3.5",
     ext_modules = cythonize(
         [
             Extension(

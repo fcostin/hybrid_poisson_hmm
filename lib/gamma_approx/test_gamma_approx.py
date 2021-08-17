@@ -19,12 +19,12 @@ def rng():
     return numpy.random.default_rng(seed=seed)
 
 
-@pytest.fixture(scope='module', params=["rough", "accurate"])
+@pytest.fixture(scope='module', params=["accurate", "rough"])
 def rtol_and_batch_fit(request):
     if request.param == "rough":
         return 1.0e-4, rough_fit_batch_gamma_dists_to_gamma_mixtures
     if request.param == "accurate":
-        return 1.0e-5, fit_batch_gamma_dists_to_gamma_mixtures
+        return 5.0e-5, fit_batch_gamma_dists_to_gamma_mixtures
 
 
 @pytest.fixture(scope='module')
@@ -157,12 +157,27 @@ def make_batch_of_hard_examples():
         3.83586981, 8.4862775 , 9.12434376, 4.86092547])
     add(c, alphas, betas)
 
-    mix_lengths = numpy.asarray(mix_lengths, dtype=numpy.int64)
-    mix_cs = numpy.concatenate(mix_cs, dtype=numpy.float64)
-    mix_alphas = numpy.concatenate(mix_alphas, dtype=numpy.float64)
-    mix_betas = numpy.concatenate(mix_betas, dtype=numpy.float64)
+    # Nasty example. Increasing number of Halley's method iterations
+    # doesn't appear to help.
+    c = numpy.array([
+        0.18569141, 0.12771625, 0.0835672, 0.1340494, 0.20193201,
+        0.14130824, 0.05544657, 0.07028893])
+    alphas = numpy.array([
+        1.16340625e+00, 6.56767644e+03, 3.44695157e+03, 1.77372732e-01,
+        4.34324328e+03, 1.93266757e+01, 1.60593812e+00, 1.19390716e+5])
+    betas = numpy.array([
+        2.04918167e+01, 2.31999333e+03, 5.67541392e+03, 1.72020779e+00,
+        5.21686963e+00, 1.27125810e+01, 1.58845935e+02, 2.81032632e+03])
+    add(c, alphas, betas)
 
-    return (mix_lengths, mix_cs, mix_alphas, mix_betas)
+    lengths = numpy.asarray(mix_lengths, dtype=numpy.int64)
+    n_components = lengths.sum()
+
+    cab = numpy.empty(shape=(n_components, 3), dtype=numpy.float64)
+    cab[:, 0] = numpy.concatenate(mix_cs, dtype=numpy.float64)
+    cab[:, 1] = numpy.concatenate(mix_alphas, dtype=numpy.float64)
+    cab[:, 2] = numpy.concatenate(mix_betas, dtype=numpy.float64)
+    return (lengths, cab)
 
 
 def make_batch_problems(rng, n_mixtures):
@@ -198,17 +213,19 @@ def make_batch_problems(rng, n_mixtures):
         mix_betas.append(betas)
 
     lengths = numpy.asarray(mix_lengths, dtype=numpy.int64)
-    c = numpy.concatenate(mix_cs, dtype=numpy.float64)
-    alphas = numpy.concatenate(mix_alphas, dtype=numpy.float64)
-    betas = numpy.concatenate(mix_betas, dtype=numpy.float64)
+    n_components = lengths.sum()
 
-    return (lengths, c, alphas, betas)
+    cab = numpy.empty(shape=(n_components, 3), dtype=numpy.float64)
+    cab[:, 0] = numpy.concatenate(mix_cs, dtype=numpy.float64)
+    cab[:, 1] = numpy.concatenate(mix_alphas, dtype=numpy.float64)
+    cab[:, 2] = numpy.concatenate(mix_betas, dtype=numpy.float64)
+    return (lengths, cab)
 
 
 def test_batch_fit_on_hard_examples(rtol_and_batch_fit):
     rtol, batch_fit = rtol_and_batch_fit
 
-    mix_lengths, mix_cs, mix_alphas, mix_betas = make_batch_of_hard_examples()
+    mix_lengths, mix_cab = make_batch_of_hard_examples()
     n_mixtures = len(mix_lengths)
 
     acc_iters = 0
@@ -220,9 +237,7 @@ def test_batch_fit_on_hard_examples(rtol_and_batch_fit):
 
     result = batch_fit(
         mix_lengths,
-        mix_cs,
-        mix_alphas,
-        mix_betas,
+        mix_cab,
         out_alphas,
         out_betas,
     )
@@ -237,9 +252,9 @@ def test_batch_fit_on_hard_examples(rtol_and_batch_fit):
         end = end + mix_lengths[mix_i]
 
         # Compute expected rate and expected log rate of mixture
-        c = mix_cs[start:end]
-        alphas = mix_alphas[start:end]
-        betas = mix_betas[start:end]
+        c = mix_cab[start:end, 0]
+        alphas = mix_cab[start:end, 1]
+        betas = mix_cab[start:end, 2]
         expected_rate = expected_rate_of_gamma_mixture(c, alphas, betas)
         expected_log_rate = expected_log_rate_of_gamma_mixture(c, alphas, betas)
 
@@ -277,16 +292,14 @@ def test_fuzztest_mixture_fitting(rng, n_fuzz_trials, n_mixtures_per_trial, rtol
 
     for trial_i in range(n_trials):
 
-        mix_lengths, mix_cs, mix_alphas, mix_betas = make_batch_problems(rng, n_mixtures)
+        mix_lengths, mix_cab = make_batch_problems(rng, n_mixtures)
 
         out_alphas = numpy.zeros((n_mixtures, ), dtype=numpy.float64)
         out_betas = numpy.zeros((n_mixtures,), dtype=numpy.float64)
 
         result = batch_fit(
             mix_lengths,
-            mix_cs,
-            mix_alphas,
-            mix_betas,
+            mix_cab,
             out_alphas,
             out_betas,
         )
@@ -301,9 +314,9 @@ def test_fuzztest_mixture_fitting(rng, n_fuzz_trials, n_mixtures_per_trial, rtol
             end = end + mix_lengths[mix_i]
 
             # Compute expected rate and expected log rate of mixture
-            c = mix_cs[start:end]
-            alphas = mix_alphas[start:end]
-            betas = mix_betas[start:end]
+            c = mix_cab[start:end, 0]
+            alphas = mix_cab[start:end, 1]
+            betas = mix_cab[start:end, 2]
             expected_rate = expected_rate_of_gamma_mixture(c, alphas, betas)
             expected_log_rate = expected_log_rate_of_gamma_mixture(c, alphas, betas)
 
@@ -316,6 +329,27 @@ def test_fuzztest_mixture_fitting(rng, n_fuzz_trials, n_mixtures_per_trial, rtol
             rel_errors[trial_i, mix_i] = relative_error(theta_star, expected_rate, expected_log_rate)
 
             start = start + mix_lengths[mix_i]
+
+        worst_trial_i = numpy.argmax(rel_errors[trial_i, :])
+
+        if rel_errors[trial_i, worst_trial_i] > rtol:
+            print('trial %d mix %d example with relerror %r > rtol %r' % (
+                trial_i,
+                worst_trial_i,
+                rel_errors[trial_i, worst_trial_i],
+                rtol,
+            ))
+            start_worst = mix_lengths[:worst_trial_i].sum()
+            end_worst = start_worst + mix_lengths[worst_trial_i]
+
+            c = mix_cab[start_worst:end_worst, 0]
+            alphas = mix_cab[start_worst:end_worst, 1]
+            betas = mix_cab[start_worst:end_worst, 2]
+
+            print('c = %r' % (c, ))
+            print('alphas = %r' % (alphas,))
+            print('betas = %r' % (betas,))
+
 
     print('total iters %r' % (acc_iters, ))
     print('mean iters per mix %r' % (acc_iters / acc_mixtures, ))

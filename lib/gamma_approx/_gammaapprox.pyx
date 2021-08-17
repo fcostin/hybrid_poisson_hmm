@@ -1,7 +1,6 @@
 # cython: profile=False
 
 cimport cython
-from cython cimport view
 from libc.math cimport pow, log, fabs, NAN
 
 ctypedef double dtype_t
@@ -38,17 +37,15 @@ cdef struct BatchFitResult:
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
+cdef BatchFitResult validate_batch_input(
         const index_t[:] lengths,
-        const dtype_t[:] c,
-        const dtype_t[:] a,
-        const dtype_t[:] b,
-        dtype_t[:] out_alpha,
-        dtype_t[:] out_beta) nogil:
-    cdef index_t n_mixtures, i, j, n, m, start, end
-    cdef dtype_t expected_lambda, expected_log_lambda, acc_c, cj, aj, bj, ratej, y
+        const dtype_t[:,::1] cab,
+        const dtype_t[:] out_alpha,
+        const dtype_t[:] out_beta) nogil:
+
+    cdef index_t n_mixtures, i, j, n, m, start
+    cdef dtype_t acc_c
     cdef BatchFitResult result
-    cdef HalleyResult hresult
 
     result.status = StatusInvalidInput
     result.iters = 0
@@ -59,9 +56,8 @@ cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
     n = 0
     for i in range(n_mixtures):
         n += lengths[i]
-    result.n_issues += (n != c.shape[0])
-    result.n_issues += (n != a.shape[0])
-    result.n_issues += (n != b.shape[0])
+    result.n_issues += (n != cab.shape[0])
+    result.n_issues += (3 != cab.shape[1])
     result.n_issues += (n_mixtures != out_alpha.shape[0])
     result.n_issues += (n_mixtures != out_beta.shape[0])
 
@@ -70,18 +66,17 @@ cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
 
     # Sanity check data is in domain
     for i in range(n):
-        result.n_issues += (a[i] <= 0.0)
-        result.n_issues += (b[i] <= 0.0)
-        result.n_issues += (c[i] < 0.0)
+        result.n_issues += (cab[i, 0] < 0.0)
+        result.n_issues += (cab[i, 1] <= 0.0)
+        result.n_issues += (cab[i, 2] <= 0.0)
 
     # Sanity check mixture coefficients are convex combinations
     start = 0
-    end = 0
     for i in range(n_mixtures):
         m = lengths[i]
         acc_c = 0.0
         for j in range(m):
-            acc_c += c[start + j]
+            acc_c += cab[start + j, 0]
         start += m
         result.n_issues += fabs(acc_c - 1.0) > 1e-8
 
@@ -89,19 +84,39 @@ cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
         return result
 
     result.status = StatusOK
+    return result
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
+        const index_t[:] lengths,
+        const dtype_t[:,::1] cab, # shape (n_components, 3)
+        dtype_t[:] out_alpha,
+        dtype_t[:] out_beta) nogil:
+    cdef index_t n_mixtures, i, j, n, m, start
+    cdef dtype_t expected_lambda, expected_log_lambda, acc_c, cj, aj, bj, ratej, y
+    cdef BatchFitResult result
+    cdef HalleyResult hresult
+
+    result = validate_batch_input(lengths, cab, out_alpha, out_beta)
+    if result.status != StatusOK:
+        return result
+
+    n_mixtures = lengths.shape[0]
     start = 0
-    end = 0
     for i in range(n_mixtures):
         m = lengths[i]
         expected_lambda = 0.0
         expected_log_lambda = 0.0
         for j in range(m):
-            cj = c[start+j] # TODO ensure cab are adjacent in memory
-            aj = a[start+j] # force structurally using layout of input
-            bj = b[start+j]
+            cj = cab[start+j, 0]
+            aj = cab[start+j, 1]
+            bj = cab[start+j, 2]
             ratej = aj / bj
             expected_lambda += cj * ratej
-            expected_log_lambda += cj * (_approx_digamma(aj) - log(bj))
+            expected_log_lambda += cj * _approx_digamma_minus_log_b(aj, bj)
         y = expected_log_lambda - log(expected_lambda)
         hresult = inverse_digamma_minus_log_halley(y, x0=rough_inverse_f(y))
         out_alpha[i] = hresult.x
@@ -118,9 +133,7 @@ cpdef BatchFitResult fit_batch_gamma_dists_to_gamma_mixtures(
 @cython.wraparound(False)
 cpdef BatchFitResult rough_fit_batch_gamma_dists_to_gamma_mixtures(
         const index_t[:] lengths,
-        const dtype_t[:] c,
-        const dtype_t[:] a,
-        const dtype_t[:] b,
+        const dtype_t[:,::1] cab, # shape (n_components, 3)
         dtype_t[:] out_alpha,
         dtype_t[:] out_beta) nogil:
     """
@@ -135,75 +148,99 @@ cpdef BatchFitResult rough_fit_batch_gamma_dists_to_gamma_mixtures(
     Hardcoding two iterations and removing all logic controlling iterations and
     convgergence checks reduces the running time by around 11%.
     """
-    cdef index_t n_mixtures, i, j, n, m, start, end
-    cdef dtype_t expected_lambda, expected_log_lambda, acc_c, cj, aj, bj, ratej, y, x
     cdef BatchFitResult result
-    cdef HalleyStep hs
 
-    result.status = StatusInvalidInput
-    result.iters = 0
-    result.n_issues = 0
+    result = validate_batch_input(lengths, cab, out_alpha, out_beta)
+    if result.status != StatusOK:
+        return result
 
-    # Sanity check input shapes conform with length packing.
+    # Breaking the computation into two passes doesn't give any speedup, but
+    # it does make it easier to understand the performance.
+
+    # Compute the expected rate and expected log rate of each mixture in batch.
+    # out_alpha and out_beta are (ab)used as temporary storage of results.
+    # note: this pass takes 58% running time.
+    batch_expected_rate_expected_log_rate(lengths, cab, out_alpha, out_beta)
+
+    # Compute the single Gamma fit from expected rate & expected log rate
+    # note: this pass takes 42% running time.
+    result = batch_fit_from_expectations(lengths, cab, out_alpha, out_beta)
+
+    return result
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void batch_expected_rate_expected_log_rate(
+        const index_t[:] lengths,
+        const dtype_t[:,::1] cab,
+        dtype_t[:] out_alpha,
+        dtype_t[:] out_beta) nogil:
+
+    cdef index_t n_mixtures, i, j, m, start
+    cdef dtype_t expected_lambda, expected_log_lambda, cj, aj, bj, ratej
+
+    # Rough compute time breakdown:
+    # 40% is the single _log call made by approx_digamma_minus_log_b
+    # 50% is the rest of _approx_digamma_minus_log_b
+    # 10% everything else
+
     n_mixtures = lengths.shape[0]
-    n = 0
-    for i in range(n_mixtures):
-        n += lengths[i]
-    result.n_issues += (n != c.shape[0])
-    result.n_issues += (n != a.shape[0])
-    result.n_issues += (n != b.shape[0])
-    result.n_issues += (n_mixtures != out_alpha.shape[0])
-    result.n_issues += (n_mixtures != out_beta.shape[0])
-
-    if result.n_issues > 0:
-        return result
-
-    # Sanity check data is in domain
-    for i in range(n):
-        result.n_issues += (a[i] <= 0.0)
-        result.n_issues += (b[i] <= 0.0)
-        result.n_issues += (c[i] < 0.0)
-
-    # Sanity check mixture coefficients are convex combinations
     start = 0
-    end = 0
-    for i in range(n_mixtures):
-        m = lengths[i]
-        acc_c = 0.0
-        for j in range(m):
-            acc_c += c[start + j]
-        start += m
-        result.n_issues += fabs(acc_c - 1.0) > 1e-8
-
-    if result.n_issues > 0:
-        return result
-
-    result.status = StatusOK
-    start = 0
-    end = 0
     for i in range(n_mixtures):
         m = lengths[i]
         expected_lambda = 0.0
         expected_log_lambda = 0.0
         for j in range(m):
-            cj = c[start+j] # TODO ensure cab are adjacent in memory
-            aj = a[start+j] # force structurally using layout of input
-            bj = b[start+j]
+            cj = cab[start + j, 0]
+            aj = cab[start + j, 1]
+            bj = cab[start + j, 2]
             ratej = aj / bj
             expected_lambda += cj * ratej
-            expected_log_lambda += cj * (_approx_digamma(aj) - log(bj))
-        y = expected_log_lambda - log(expected_lambda)
+            expected_log_lambda += cj * _approx_digamma_minus_log_b(aj, bj)
+        out_alpha[i] = expected_lambda
+        out_beta[i] = expected_log_lambda
+        start += m
+    return
 
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef BatchFitResult batch_fit_from_expectations(
+        const index_t[:] lengths,
+        const dtype_t[:,::1] cab,
+        dtype_t[:] out_alpha,
+        dtype_t[:] out_beta) nogil:
+
+    cdef index_t n_mixtures, i
+    cdef dtype_t y, x, expected_lambda, expected_log_lambda
+    cdef HalleyStep hs
+
+    n_mixtures = lengths.shape[0]
+
+    cdef BatchFitResult result
+    result.status = StatusOK
+    result.n_issues = 0
+    result.iters = 2 * n_mixtures
+
+    # Rough compute time breakdown:
+    # 37% for first halley step
+    # 37% for second halley step
+    # 26% for everything else
+
+    for i in range(n_mixtures):
+        expected_lambda = out_alpha[i]
+        expected_log_lambda = out_beta[i]
+        y = expected_log_lambda - log(expected_lambda)
         x = rough_inverse_f(y)
         hs = _approx_f_halley_step(x, y)
         x += hs.step
         hs = _approx_f_halley_step(x, y)
         x += hs.step
-
         out_alpha[i] = x
         out_beta[i] = x / expected_lambda
-        result.iters += 2
-        start += m
     return result
 
 
@@ -402,7 +439,7 @@ cdef inline dtype_t expected_log_rate_of_gamma_mixture(
     cdef index_t i, n
     n = c.shape[0]
     for i in range(n):
-        acc += c[i] * (_approx_digamma(a[i]) - log(b[i]))
+        acc += c[i] * _approx_digamma_minus_log_b(a[i], b[i])
     return acc
 
 
@@ -420,7 +457,7 @@ cdef inline HalleyResult inverse_digamma_minus_log_halley(
     Uses Halley's method [1] to iteratively solve for y. Halley's method uses
     the iteration:
 
-    x_1 := x_0 - f(x_0)/f'(x_0) [1 - (f(x_0)/f'(x_0))*(f''(x_0)/(2f'(x_0)))]^-1
+    x_1 := x_0 - 2 f(x_0) f'(x_0) / (2 f'(x_0)^2 - f(x_0) f''(x_0))
 
     where
 
@@ -513,16 +550,21 @@ cdef inline HalleyResult inverse_digamma_minus_log_halley(
 cdef inline HalleyStep _approx_f_halley_step(dtype_t x0, dtype_t y) nogil:
     """
     Computes a step of Halley method [1] for an approximation of the function
-    
+
     f(x) = f(x;y) at point x=x_0 > 0.
 
     where f(x) := psi(x) - log(x) - y
+
+    x1 = x0 + step
+    where
+    step = - 2 f0 f1 / (2 f1^2 - f0 f2)
     """
-    cdef dtype_t digamma_0 = 0.0, digamma_1 = 0.0, digamma_2 = 0.0
-    cdef dtype_t f_0, f_1, f_2, ff_0
+    cdef dtype_t digamma_0_minus_log_x0 = 0.0, digamma_1 = 0.0, digamma_2 = 0.0
+    cdef dtype_t f_0, f_1, f_2
     cdef dtype_t x, x_1, x_2, x_3, x_4, x_5, x_6, x_7, x_8, x_9, x_10
+    cdef dtype_t z0, z1, z2, z3, z4, z5, z6
     cdef HalleyStep result
-    x = x0
+
 
     # The series approximation of digamma(x) is only accurate for sufficiently
     # large x. We use the recurrence relation digamma(x) = -x^-1 + digamma(x+1)
@@ -535,36 +577,20 @@ cdef inline HalleyStep _approx_f_halley_step(dtype_t x0, dtype_t y) nogil:
     # most 7 times. Most values of x we see are small. If we run the loop
     # exactly 7 times regardless of the value of x then we completely eliminate
     # branches at the cost of occasionally doing some unnecessary work.
-    digamma_0 -= 1.0 / x
-    digamma_1 += 1.0 / (x * x)
-    digamma_2 -= 2.0 / (x * x * x)
-    x += 1
-    digamma_0 -= 1.0 / x
-    digamma_1 += 1.0 / (x * x)
-    digamma_2 -= 2.0 / (x * x * x)
-    x += 1
-    digamma_0 -= 1.0 / x
-    digamma_1 += 1.0 / (x * x)
-    digamma_2 -= 2.0 / (x * x * x)
-    x += 1
-    digamma_0 -= 1.0 / x
-    digamma_1 += 1.0 / (x * x)
-    digamma_2 -= 2.0 / (x * x * x)
-    x += 1
-    digamma_0 -= 1.0 / x
-    digamma_1 += 1.0 / (x * x)
-    digamma_2 -= 2.0 / (x * x * x)
-    x += 1
-    digamma_0 -= 1.0 / x
-    digamma_1 += 1.0 / (x * x)
-    digamma_2 -= 2.0 / (x * x * x)
-    x += 1
-    digamma_0 -= 1.0 / x
-    digamma_1 += 1.0 / (x * x)
-    digamma_2 -= 2.0 / (x * x * x)
-    x += 1
 
-    x -= 1.0 / 2.0
+    z0 = 1.0/x0
+    z1 = 1.0/(x0+1.0)
+    z2 = 1.0/(x0+2.0)
+    z3 = 1.0/(x0+3.0)
+    z4 = 1.0/(x0+4.0)
+    z5 = 1.0/(x0+5.0)
+    z6 = 1.0/(x0+6.0)
+
+    digamma_0_minus_log_x0 = -z0 - z1 -z2 -z3 -z4 -z5 -z6
+    digamma_1 = z0*z0 + z1*z1 + z2*z2 + z3*z3 + z4*z4 + z5*z5 + z6*z6
+    digamma_2 = -2.0 * (z0*z0*z0 + z1*z1*z1 + z2*z2*z2 + z3*z3*z3 + z4*z4*z4 + z5*z5*z5 + z6*z6*z6)
+
+    x = x0 + 7.0 - 0.5
     x_1 = 1.0 / x
     x_2 = x_1 * x_1
     x_3 = x_2 * x_1
@@ -575,16 +601,19 @@ cdef inline HalleyStep _approx_f_halley_step(dtype_t x0, dtype_t y) nogil:
     x_8 = x_4 * x_4
     x_9 = x_7 * x_2
     x_10 = x_8 * x_2
-    digamma_0 += log(x) +   (1./24.) * x_2 -   (7.0/960.0) * x_4 +   (31.0/8064.0) * x_6  - (127.0/30720.0) * x_8
+    # We do log(x/x0) in preference to log(x) - log(x0) to reduce log calls.
+    # where log(x) is part of digamma0 but -log(x0) is not.
+    digamma_0_minus_log_x0 += log(x/x0) +   (1./24.) * x_2 -   (7.0/960.0) * x_4 +   (31.0/8064.0) * x_6  - (127.0/30720.0) * x_8
     digamma_1 +=    x_1 - (2.0/24.0) * x_3 +  (28.0/960.0) * x_5 -  (186.0/8064.0) * x_7 + (1016.0/30720.0) * x_9
     digamma_2 +=   -x_2 + (6.0/24.0) * x_4 - (140.0/960.0) * x_6 + (1302.0/8064.0) * x_8 - (9144.0/30720.0) * x_10
 
-    f_0 = digamma_0 - log(x0) - y
-    f_1 = digamma_1 - 1.0 / x0
-    f_2 = digamma_2 + 1.0 / (x0 * x0)
-    ff_0 = f_0 / f_1
+    # combining the two log calls into one speeds up pass1 by about 4%
+
+    f_0 = digamma_0_minus_log_x0 - y
+    f_1 = digamma_1 - z0
+    f_2 = digamma_2 + (z0*z0)
     result.f = f_0
-    result.step = -ff_0 / (1 - ff_0 * f_2 / (2.0 * f_1))
+    result.step = -2.0 * f_0 * f_1 / (2.0 *  f_1 * f_1 - f_0 * f_2)
     return result
 
 
@@ -606,6 +635,19 @@ cdef inline dtype_t _approx_digamma(const dtype_t x0) nogil except 0.0:
     xx2 = xx*xx
     xx4 = xx2*xx2
     result += log(x)+(1./24.)*xx2-(7.0/960.0)*xx4+(31.0/8064.0)*xx4*xx2-(127.0/30720.0)*xx4*xx4
+    return result
+
+
+@cython.cdivision(True)
+cdef inline dtype_t _approx_digamma_minus_log_b(const dtype_t x0, const dtype_t b) nogil except 0.0:
+    cdef dtype_t result = 0, x, xx, xx2, xx4
+    result = -1.0/x0 - 1.0/(x0+1.0) -1.0/(x0+2.0) -1.0/(x0+3.0) -1.0/(x0+4.0) -1.0/(x0+5.0) -1.0/(x0+6.0)
+
+    x = x0 + 7.0 - 1.0/2.0
+    xx = 1.0/x
+    xx2 = xx*xx
+    xx4 = xx2*xx2
+    result += log(x/b)+(1./24.)*xx2-(7.0/960.0)*xx4+(31.0/8064.0)*xx4*xx2-(127.0/30720.0)*xx4*xx4
     return result
 
 
