@@ -40,13 +40,18 @@ the following functions:
 
 *	`fit_gamma_dist_to_gamma_mixture`
 *	`fit_batch_gamma_dists_to_gamma_mixtures`
+*	`rough_fit_batch_gamma_dists_to_gamma_mixtures`
 
-The former function solves a single Gamma mixture
-approximation problem, while the latter takes a batch of
-many problems and solves them iteratively. For an example
-of usage of the batched fit, see the test. The API for
-both functions is defined in the
+The first function solves a single Gamma mixture
+approximation problem, while the batch functions take
+a batch of many problems and solves them iteratively.
+For an example of usage of the batched fit, see the test.
+The API for both functions is defined in the
 `lib/gamma_approx/_gammaapprox.pyx` Cython source file.
+
+The `rough_` variant of the `fit_batch_` function uses
+a fixed number of iterations, which accelerates performance
+but may give lower accuracy results for some inputs.
 
 
 ### Description:
@@ -80,12 +85,15 @@ For each fit, the library does the following:
 	immediate.
 
 Note that performance appears to be greatly accelerated when
-solving large batches of these approximation problems. There
-must be considerable overhead in the python/cython
-wrapper bindings. This could use further investigation.
+solving large batches of these approximation problems.
 
-The batched implementation can fit 320k randomly-sized
-mixtures, each consisting of 1 -- 20 component Gamma
-distributions in less than 0.175 seconds on an AMD 2200G
-CPU, using a single core. That's a running time of around
-540 nanoseconds per mixture fit.
+### Performance (single core)
+
+The "rough" lower-accuracy batched implementation
+can fit 320k randomly-sized mixtures, each consisting
+of 1 -- 20 component Gamma distributions in around 0.106
+seconds on an AMD 2200G CPU, using a single core.
+That is:
+
+*	331 nanos per mixture fit, or equivalently
+*	3 million mixture fits per second.
