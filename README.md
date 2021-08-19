@@ -67,7 +67,7 @@ where the first factor can be approximated by a Gamma distribution
 P(\lambda | x_t, y_{1:t} ) \approx Gamma(\lambda ; \alpha, \beta)
 ```
 
-where the parameters $\alpha, \beta$ of the Gamma distribution depend
+where the parameters `\alpha, \beta` of the Gamma distribution depend
 upon the current time step `t` and the hidden state `x_t`.
 
 
