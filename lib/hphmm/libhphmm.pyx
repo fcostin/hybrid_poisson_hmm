@@ -45,8 +45,6 @@ cpdef const dtype_t[:, :] forward(
 
     cdef dtype_t[:, :] q_prime = numpy.zeros(shape=(n, 3), dtype=numpy.float64)  # work buffer.
 
-    cdef index_t[:] lengths = numpy.zeros((1,), dtype=numpy.int64)  # FIXME alloc - bad. change API
-
     max_p = 20 # implementation-defined limitation
     cdef dtype_t[:, :] common_cab = numpy.zeros((n * max_p, 3), dtype=numpy.float64)  # work buffer.
 
@@ -75,8 +73,6 @@ cpdef const dtype_t[:, :] forward(
         assert p <= max_p # artificial limit to bound work buffer size
 
         np = n*p
-
-        lengths[0] = np
 
         common_cab[:np, :] = 0.0
         for w in range(w_lo, w_hi):
