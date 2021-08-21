@@ -32,29 +32,36 @@ cpdef const dtype_t[:, :] forward(
         const dtype_t[:, :] q0):
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start
-
     cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, chi_0, z_i, z
-
     cdef BatchFitResult result
+
+    cdef const dtype_t[:, :] q
+    cdef dtype_t[:, :] common_cab
+    cdef dtype_t[:] c
+    cdef dtype_t[:] c2
+    cdef dtype_t[:, :] basis_chi
+    cdef dtype_t[:, :] mixture_chi
+    cdef dtype_t[:, :] q_prime
 
     n = q0.shape[0]
     n_obs = observations.shape[0]
     max_k = signal_matrix.shape[0] - 1
 
-    cdef const dtype_t[:, :] q = q0
+    # Some of the work buffers dimensions need to have capacity proportional
+    # to the observed event count + 1, in order to store coefficients and
+    # parameters for Gamma distribution variations generated after conditioning
+    # on the observed event count.
+    max_p = max(observations) + 1
 
-    cdef dtype_t[:, :] q_prime = numpy.zeros(shape=(n, 3), dtype=numpy.float64)  # work buffer.
+    # Allocate work buffers.
+    common_cab = numpy.zeros((n * max_p, 3), dtype=numpy.float64)
+    c = numpy.empty((n, ), dtype=numpy.float64)
+    c2 = numpy.empty((n * max_p, ), dtype=numpy.float64)
+    basis_chi = numpy.zeros((n * max_p, 2), dtype=numpy.float64)
+    mixture_chi = numpy.zeros(shape=(n, 2), dtype=numpy.float64)
+    q_prime = numpy.zeros(shape=(n, 3), dtype=numpy.float64)
 
-    max_p = 20 # implementation-defined limitation
-    cdef dtype_t[:, :] common_cab = numpy.zeros((n * max_p, 3), dtype=numpy.float64)  # work buffer.
-
-    cdef dtype_t[:, ::1] otq_i_cab = numpy.empty((n * max_p, 3), dtype=numpy.float64) # work buffer.
-
-    cdef dtype_t[:] c = numpy.empty((n, ), dtype=numpy.float64) # work buffer.
-
-    cdef dtype_t[:, :] basis_chi = numpy.zeros((n * max_p, 2), dtype=numpy.float64)  # work buffer.
-
-    cdef dtype_t[:, :] mixture_chi = numpy.zeros(shape=(n, 2), dtype=numpy.float64)  # work buffer.
+    q = q0
 
     for t in range(n_obs):
         k = observations[t]
@@ -70,7 +77,7 @@ cpdef const dtype_t[:, :] forward(
         w_hi = k + 1
         p = w_hi - w_lo
 
-        assert p <= max_p # artificial limit to bound work buffer size
+        assert p <= max_p
 
         np = n*p
 
@@ -118,13 +125,13 @@ cpdef const dtype_t[:, :] forward(
             for w in range(w_lo, w_hi):
                 start = (n * (w - w_lo))
                 for j in range(n):
-                    otq_i_cab[start+j, 0] = c[j] * common_cab[start+j, 0]
+                    c2[start+j] = c[j] * common_cab[start+j, 0]
 
             z_i = 0.0
             for j in range(np):
-                z_i += otq_i_cab[j, 0]
+                z_i += c2[j]
             for j in range(np):
-                otq_i_cab[j, 0] = otq_i_cab[j, 0] / z_i
+                c2[j] = c2[j] / z_i
 
             q_prime[i, 0] = z_i
 
@@ -135,8 +142,8 @@ cpdef const dtype_t[:, :] forward(
             mixture_chi[i, 0] = 0.0
             mixture_chi[i, 1] = 0.0
             for j in range(np):
-                mixture_chi[i, 0] += otq_i_cab[j, 0] * basis_chi[j, 0]
-                mixture_chi[i, 1] += otq_i_cab[j, 0] * basis_chi[j, 1]
+                mixture_chi[i, 0] += c2[j] * basis_chi[j, 0]
+                mixture_chi[i, 1] += c2[j] * basis_chi[j, 1]
 
         result = batch_fit_from_characteristics(
             mixture_chi,
