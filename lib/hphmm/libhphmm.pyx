@@ -31,15 +31,13 @@ cpdef const dtype_t[:, :] forward(
         const int_t[:] observations,
         const dtype_t[:, :] q0):
 
-    cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start
+    cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj
     cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, inv_z_i, z
     cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j
     cdef BatchFitResult result
 
     cdef const dtype_t[:, :] q
     cdef dtype_t[:, :] common_cab
-    cdef dtype_t[:] c
-    cdef dtype_t[:] c2
     cdef dtype_t[:, :] basis_chi
     cdef dtype_t[:, :] mixture_chi
     cdef dtype_t[:, :] q_prime
@@ -56,8 +54,6 @@ cpdef const dtype_t[:, :] forward(
 
     # Allocate work buffers.
     common_cab = numpy.zeros((n * max_p, 3), dtype=numpy.float64)
-    c = numpy.empty((n, ), dtype=numpy.float64)
-    c2 = numpy.empty((n * max_p, ), dtype=numpy.float64)
     basis_chi = numpy.zeros((n * max_p, 2), dtype=numpy.float64)
     mixture_chi = numpy.zeros(shape=(n, 2), dtype=numpy.float64)
     q_prime = numpy.zeros(shape=(n, 3), dtype=numpy.float64)
@@ -123,14 +119,6 @@ cpdef const dtype_t[:, :] forward(
 
         # i : destination state index
         for i in range(n):
-            # FIXME dense matrix. reimplement as sparse.
-            for j in range(n):
-                c[j] = transition_matrix[i, j] * q[j, 0]
-            for w in range(w_lo, w_hi):
-                start = (n * (w - w_lo))
-                for j in range(n):
-                    c2[start+j] = c[j] * common_cab[start+j, 0]
-
             # Compute expected characteristics of the mixture of Gamma
             # distributions associated with destination state index i .
             # This is just a convex combination of the characteristics of
@@ -138,11 +126,14 @@ cpdef const dtype_t[:, :] forward(
             z_i = 0.0
             mixture_expected_rate = 0.0
             mixture_expected_log_rate = 0.0
-            for j in range(np):
-                c2j = c2[j]
-                z_i += c2j
-                mixture_expected_rate += c2j * basis_chi[j, 0]
-                mixture_expected_log_rate += c2j * basis_chi[j, 1]
+            for w in range(w_lo, w_hi):
+                start = (n * (w - w_lo))
+                for j in range(n): # FIXME dense matrix. reimplement as sparse.
+                    wj = start + j
+                    c2j = transition_matrix[i, j] * q[j, 0] * common_cab[wj, 0]
+                    z_i += c2j
+                    mixture_expected_rate += c2j * basis_chi[wj, 0]
+                    mixture_expected_log_rate += c2j * basis_chi[wj, 1]
 
             # Normalise so that mixture coefficients sum to unity
             inv_z_i = 1.0 / z_i
