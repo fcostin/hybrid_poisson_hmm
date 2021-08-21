@@ -116,17 +116,13 @@ cpdef const dtype_t[:, :] forward(
 
         # i : destination state index
         for i in range(n):
-            otq_i_cab[:np, 0] = common_cab[:np, 0]  # FIXME eliminate copy ?
-            otq_i_cab[:np, 1] = basis_chi[:np, 0]  # FIXME eliminate copy ?
-            otq_i_cab[:np, 2] = basis_chi[:np, 1]  # FIXME eliminate copy ?
-
             # FIXME dense matrix. reimplement as sparse.
             for j in range(n):
                 c[j] = transition_matrix[i, j] * q[j, 0]
             for w in range(w_lo, w_hi):
                 start = (n * (w - w_lo))
                 for j in range(n):
-                    otq_i_cab[start+j, 0] *= c[j]
+                    otq_i_cab[start+j, 0] = c[j] * common_cab[start+j, 0]
 
             z_i = 0.0
             for j in range(np):
@@ -143,8 +139,8 @@ cpdef const dtype_t[:, :] forward(
             mixture_chi[i, 0] = 0.0
             mixture_chi[i, 1] = 0.0
             for j in range(np):
-                mixture_chi[i, 0] += otq_i_cab[j, 0] * otq_i_cab[j, 1]
-                mixture_chi[i, 1] += otq_i_cab[j, 0] * otq_i_cab[j, 2]
+                mixture_chi[i, 0] += otq_i_cab[j, 0] * basis_chi[j, 0]
+                mixture_chi[i, 1] += otq_i_cab[j, 0] * basis_chi[j, 1]
 
         result = batch_fit_from_characteristics(
             mixture_chi,
