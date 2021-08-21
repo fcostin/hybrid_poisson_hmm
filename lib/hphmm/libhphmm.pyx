@@ -33,6 +33,7 @@ cpdef const dtype_t[:, :] forward(
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start
     cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, inv_z_i, z
+    cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j
     cdef BatchFitResult result
 
     cdef const dtype_t[:, :] q
@@ -135,17 +136,18 @@ cpdef const dtype_t[:, :] forward(
             # This is just a convex combination of the characteristics of
             # the "basis" Gamma distributions present in the the mixture.
             z_i = 0.0
-            mixture_chi[i, 0] = 0.0
-            mixture_chi[i, 1] = 0.0
+            mixture_expected_rate = 0.0
+            mixture_expected_log_rate = 0.0
             for j in range(np):
-                z_i += c2[j]
-                mixture_chi[i, 0] += c2[j] * basis_chi[j, 0]
-                mixture_chi[i, 1] += c2[j] * basis_chi[j, 1]
+                c2j = c2[j]
+                z_i += c2j
+                mixture_expected_rate += c2j * basis_chi[j, 0]
+                mixture_expected_log_rate += c2j * basis_chi[j, 1]
 
             # Normalise so that mixture coefficients sum to unity
             inv_z_i = 1.0 / z_i
-            mixture_chi[i, 0] *= inv_z_i
-            mixture_chi[i, 1] *= inv_z_i
+            mixture_chi[i, 0] = inv_z_i * mixture_expected_rate
+            mixture_chi[i, 1] = inv_z_i * mixture_expected_log_rate
             q_prime[i, 0] = z_i
 
         result = batch_fit_from_expectations(
