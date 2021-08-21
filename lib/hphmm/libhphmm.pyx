@@ -32,7 +32,7 @@ cpdef const dtype_t[:, :] forward(
         const dtype_t[:, :] q0):
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj
-    cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, inv_z_i, z
+    cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, inv_z_i, z, inv_z
     cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j
     cdef BatchFitResult result
 
@@ -76,6 +76,9 @@ cpdef const dtype_t[:, :] forward(
 
         np = n*p
 
+        # Construct a "basis" of Gamma distributions by taking all the
+        # individual Gamma distributions we are tracking, and conditioning
+        # them on this timestep's current observation.
         basis[:np, :] = 0.0
         for w in range(w_lo, w_hi):
             j = w - w_lo
@@ -98,26 +101,23 @@ cpdef const dtype_t[:, :] forward(
                 )
 
                 basis[start + i, 0] = signal_matrix[k - w][i] * neg_bin_w_a_b
-                basis[start + i, 1] = alpha_
-                basis[start + i, 2] = beta_
 
-        # Precompute expected rate and log rate of each Gamma distribution
-        # in basis. Overwrite the (alpha, beta) parameters of each Gamma
-        # with these expected values that characterise each distribution.
-        #
-        #   E[rate] = alpha / beta
-        #   E[log(rate)] = digamma(alpha) - log(beta)
-        #
-        # This avoids recomputing some terms that that are shared across many
-        # of the mixture-sums we compute below.
-        #
-        # TODO in previous block we see many alpha differ by integer amounts
-        # -- could try to exploit digamma(z+1) = digamma(z) + 1/z
-        for i in range(np):
-            alpha_ = basis[i, 1]
-            beta_ = basis[i, 2]
-            basis[i, 1] = alpha_ / beta_
-            basis[i, 2] = _approx_digamma_minus_log_b(alpha_, beta_)
+                # Precompute and store the expected rate and log rate of each
+                # Gamma distribution:
+                #
+                #   E[rate] = alpha / beta
+                #   E[log(rate)] = digamma(alpha) - log(beta)
+                #
+                # This avoids recomputing some terms that that are shared
+                # across many of the mixture-sums we compute below. Note that
+                # we do not need to store the alpha and beta of each
+                # distribution once we have characterised the distribution by
+                # these expected values.
+                #
+                # TODO many alphas differ by integer amounts -- could try to
+                #  exploit digamma(z+1) = digamma(z) + 1/z
+                basis[start + i, 1] = alpha_ / beta_
+                basis[start + i, 2] = _approx_digamma_minus_log_b(alpha_, beta_)
 
         # i : destination state index
         for i in range(n):
@@ -155,8 +155,9 @@ cpdef const dtype_t[:, :] forward(
         for i in range(n):
             z += q_prime[i, 0]
         assert z > 0.0
+        inv_z = 1.0 / z
         for i in range(n):
-            q_prime[i, 0] = q_prime[i, 0] / z
+            q_prime[i, 0] = inv_z * q_prime[i, 0]
         q = q_prime
     return q
 
