@@ -130,24 +130,23 @@ cpdef const dtype_t[:, :] forward(
                 for j in range(n):
                     c2[start+j] = c[j] * common_cab[start+j, 0]
 
-            z_i = 0.0
-            for j in range(np):
-                z_i += c2[j]
-            inv_z_i = 1.0 / z_i
-            for j in range(np):
-                c2[j] = c2[j] * inv_z_i
-
-            q_prime[i, 0] = z_i
-
             # Compute expected characteristics of the mixture of Gamma
             # distributions associated with destination state index i .
             # This is just a convex combination of the characteristics of
             # the "basis" Gamma distributions present in the the mixture.
+            z_i = 0.0
             mixture_chi[i, 0] = 0.0
             mixture_chi[i, 1] = 0.0
             for j in range(np):
+                z_i += c2[j]
                 mixture_chi[i, 0] += c2[j] * basis_chi[j, 0]
                 mixture_chi[i, 1] += c2[j] * basis_chi[j, 1]
+
+            # Normalise so that mixture coefficients sum to unity
+            inv_z_i = 1.0 / z_i
+            mixture_chi[i, 0] *= inv_z_i
+            mixture_chi[i, 1] *= inv_z_i
+            q_prime[i, 0] = z_i
 
         result = batch_fit_from_expectations(
             mixture_chi,
