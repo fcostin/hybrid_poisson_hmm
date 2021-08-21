@@ -33,7 +33,7 @@ cpdef const dtype_t[:, :] forward(
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start
 
-    cdef dtype_t alpha_, beta_, neg_bin_w_a_b, z_i, z
+    cdef dtype_t alpha_, beta_, neg_bin_w_a_b, chi_0, z_i, z
 
     cdef BatchFitResult result
 
@@ -54,10 +54,9 @@ cpdef const dtype_t[:, :] forward(
 
     cdef dtype_t[:] c = numpy.empty((n, ), dtype=numpy.float64) # work buffer.
 
-    cdef dtype_t[:, :] chi = numpy.zeros((n * max_p, 2), dtype=numpy.float64)  # work buffer.
+    cdef dtype_t[:, :] basis_chi = numpy.zeros((n * max_p, 2), dtype=numpy.float64)  # work buffer.
 
-    cdef dtype_t[:] expected_lambdas = numpy.zeros(shape=(n, ), dtype=numpy.float64)  # work buffer.
-    cdef dtype_t[:] expected_log_lambdas = numpy.zeros(shape=(n, ), dtype=numpy.float64)  # work buffer.
+    cdef dtype_t[:, :] mixture_chi = numpy.zeros(shape=(n, 2), dtype=numpy.float64)  # work buffer.
 
     for t in range(n_obs):
         k = observations[t]
@@ -98,26 +97,27 @@ cpdef const dtype_t[:, :] forward(
                 common_cab[start + i, 1] = alpha_
                 common_cab[start + i, 2] = beta_
 
-        # common_cab forms weighted "basis" of Gammas
-
-        # Precompute E[rate] and E[log(rate)] for each element of our Gamma
-        # "basis". digamma and logs are expensive to compute. This avoids
-        # recomputing digamma and log for terms that are shared in many
-        # mixture-sums.
+        # Precompute "characteristics"
+        #   chi_0 := E[rate]
+        #   chi_1 := E[log(rate)] - log(chi_0)
+        #
+        # for each element of our Gamma "basis". digamma and logs are
+        # expensive to compute. This avoids recomputing digamma and log for
+        # terms that are shared across many mixture-sums.
         # FIXME in previous block we see many alpha differ by integer amounts
-        #  -- could try to exploit digamma(z+1) = digamma(z) + 1/z
+        # -- could try to exploit digamma(z+1) = digamma(z) + 1/z
         for i in range(np):
             alpha_ = common_cab[i, 1]
             beta_ = common_cab[i, 2]
-            chi[i, 0] = alpha_ / beta_
-            chi[i, 1] = _approx_digamma_minus_log_b(alpha_, beta_)
-        # TODO we dont need E[log(rate)], we really need E[log(rate)] - log(E[rate]).
+            chi_0 = alpha_ / beta_
+            basis_chi[i, 0] = chi_0
+            basis_chi[i, 1] = _approx_digamma_minus_log_b(alpha_, beta_) - log(chi_0)
 
         # i : destination state index
         for i in range(n):
             otq_i_cab[:np, 0] = common_cab[:np, 0]  # FIXME eliminate copy ?
-            otq_i_cab[:np, 1] = chi[:np, 0]  # FIXME eliminate copy ?
-            otq_i_cab[:np, 2] = chi[:np, 1]  # FIXME eliminate copy ?
+            otq_i_cab[:np, 1] = basis_chi[:np, 0]  # FIXME eliminate copy ?
+            otq_i_cab[:np, 2] = basis_chi[:np, 1]  # FIXME eliminate copy ?
 
             # FIXME dense matrix. reimplement as sparse.
             for j in range(n):
@@ -135,17 +135,18 @@ cpdef const dtype_t[:, :] forward(
 
             q_prime[i, 0] = z_i
 
-            # Compute expected lambda and expected log lambda for mixture
-            # of Gamma distributions associated with destination state index i
-            expected_lambdas[i] = 0.0
-            expected_log_lambdas[i] = 0.0
+            # Compute expected characteristics of the mixture of Gamma
+            # distributions associated with destination state index i .
+            # This is just a convex combination of the characteristics of
+            # the "basis" Gamma distributions present in the the mixture.
+            mixture_chi[i, 0] = 0.0
+            mixture_chi[i, 1] = 0.0
             for j in range(np):
-                expected_lambdas[i] += otq_i_cab[j, 0] * otq_i_cab[j, 1]
-                expected_log_lambdas[i] += otq_i_cab[j, 0] * otq_i_cab[j, 2]
+                mixture_chi[i, 0] += otq_i_cab[j, 0] * otq_i_cab[j, 1]
+                mixture_chi[i, 1] += otq_i_cab[j, 0] * otq_i_cab[j, 2]
 
-        result = batch_fit_from_expectations(
-            expected_lambdas,
-            expected_log_lambdas,
+        result = batch_fit_from_characteristics(
+            mixture_chi,
             q_prime[:, 1],
             q_prime[:, 2],
         )
@@ -165,39 +166,43 @@ cpdef const dtype_t[:, :] forward(
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef BatchFitResult batch_fit_from_expectations(
-        const dtype_t[:] expected_lambdas,
-        const dtype_t[:] expected_log_lambdas,
+cdef BatchFitResult batch_fit_from_characteristics(
+        const dtype_t[:, :] chi,
         dtype_t[:] out_alpha,
         dtype_t[:] out_beta) nogil:
+    """
+    By the characteristics chi of p, a convex combination of
+    Gamma distributions, we mean:
+
+    chi_0 := E_p [ rate ]
+    chi_1 := E_p [ log(rate) ] - log ( chi_0 )
+    """
 
     cdef index_t n_mixtures, i
-    cdef dtype_t y, x, expected_lambda, expected_log_lambda
+    cdef dtype_t y, x
     cdef HalleyStep hs
 
-    n_mixtures = expected_lambdas.shape[0]
+    n_mixtures = chi.shape[0]
 
     cdef BatchFitResult result
     result.status = StatusOK
     result.n_issues = 0
     result.iters = 2 * n_mixtures
 
-    # Rough compute time breakdown:
+    # Rough compute time breakdown TODO out of date, remeasure.
     # 37% for first halley step
     # 37% for second halley step
     # 26% for everything else
 
     for i in range(n_mixtures):
-        expected_lambda = expected_lambdas[i]
-        expected_log_lambda = expected_log_lambdas[i]
-        y = expected_log_lambda - log(expected_lambda)
+        y = chi[i, 1]
         x = rough_inverse_f(y)
         hs = _approx_f_halley_step(x, y)
         x += hs.step
         hs = _approx_f_halley_step(x, y)
         x += hs.step
         out_alpha[i] = x
-        out_beta[i] = x / expected_lambda
+        out_beta[i] = x / chi[i, 0]
     return result
 
 
