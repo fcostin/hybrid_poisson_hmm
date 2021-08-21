@@ -33,7 +33,7 @@ cpdef const dtype_t[:, :] forward(
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj
     cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, inv_z_i, z, inv_z
-    cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j
+    cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j, lgamma_wp1
     cdef BatchFitResult result
 
     cdef const dtype_t[:, :] q
@@ -83,6 +83,7 @@ cpdef const dtype_t[:, :] forward(
         for w in range(w_lo, w_hi):
             j = w - w_lo
             start = (n * j)
+            lgamma_wp1 = lgamma(w+1)
             for i in range(n):
                 alpha = q[i, 1]
                 beta = q[i, 2]
@@ -95,7 +96,7 @@ cpdef const dtype_t[:, :] forward(
                 # large factors in numerator and denominator the chance to
                 # cancel each other.
                 neg_bin_w_a_b = exp(
-                    lgamma(alpha+w) - lgamma(w+1) - lgamma(alpha) +
+                    lgamma(alpha+w) - lgamma_wp1 - lgamma(alpha) +
                     alpha * log(beta / (beta + 1)) +
                     w * log(1.0 / (beta+1))
                 )
