@@ -6,7 +6,7 @@ test:
 .PHONY: test
 
 libs:    $(LIBGAMMAAPPROX) $(LIBHPHMM)
-.PHONY: lib
+.PHONY: libs
 
 $(LIBGAMMAAPPROX): setup_gamma_approx.py lib/gamma_approx/_gammaapprox.pyx
 	python setup_gamma_approx.py build_ext --inplace
