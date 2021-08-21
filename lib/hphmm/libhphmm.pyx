@@ -37,8 +37,7 @@ cpdef const dtype_t[:, :] forward(
     cdef BatchFitResult result
 
     cdef const dtype_t[:, :] q
-    cdef dtype_t[:, :] common_cab
-    cdef dtype_t[:, :] basis_chi
+    cdef dtype_t[:, :] basis
     cdef dtype_t[:, :] mixture_chi
     cdef dtype_t[:, :] q_prime
 
@@ -53,8 +52,7 @@ cpdef const dtype_t[:, :] forward(
     max_p = max(observations) + 1
 
     # Allocate work buffers.
-    common_cab = numpy.zeros((n * max_p, 3), dtype=numpy.float64)
-    basis_chi = numpy.zeros((n * max_p, 2), dtype=numpy.float64)
+    basis = numpy.zeros((n * max_p, 3), dtype=numpy.float64)
     mixture_chi = numpy.zeros(shape=(n, 2), dtype=numpy.float64)
     q_prime = numpy.zeros(shape=(n, 3), dtype=numpy.float64)
 
@@ -78,7 +76,7 @@ cpdef const dtype_t[:, :] forward(
 
         np = n*p
 
-        common_cab[:np, :] = 0.0
+        basis[:np, :] = 0.0
         for w in range(w_lo, w_hi):
             j = w - w_lo
             start = (n * j)
@@ -90,7 +88,7 @@ cpdef const dtype_t[:, :] forward(
 
                 # Evaluate negative-binomial distribution at w with parameters
                 # alpha and beta.  This must be evaluated carefully when alpha
-                # & beta are large. E valuate the log of the expression to give
+                # & beta are large. Evaluate the log of the expression to give
                 # large factors in numerator and denominator the chance to
                 # cancel each other.
                 neg_bin_w_a_b = exp(
@@ -99,23 +97,27 @@ cpdef const dtype_t[:, :] forward(
                     w * log(1.0 / (beta+1))
                 )
 
-                common_cab[start + i, 0] = signal_matrix[k - w][i] * neg_bin_w_a_b
-                common_cab[start + i, 1] = alpha_
-                common_cab[start + i, 2] = beta_
+                basis[start + i, 0] = signal_matrix[k - w][i] * neg_bin_w_a_b
+                basis[start + i, 1] = alpha_
+                basis[start + i, 2] = beta_
 
-        # Precompute "characteristics"
-        #   chi_0 := E[rate]
-        #   chi_1 := E[log(rate)]
+        # Precompute expected rate and log rate of each Gamma distribution
+        # in basis. Overwrite the (alpha, beta) parameters of each Gamma
+        # with these expected values that characterise each distribution.
         #
-        # for each element of our Gamma "basis". This avoids recomputing
-        # some terms that that are shared across many mixture-sums.
-        # FIXME in previous block we see many alpha differ by integer amounts
+        #   E[rate] = alpha / beta
+        #   E[log(rate)] = digamma(alpha) - log(beta)
+        #
+        # This avoids recomputing some terms that that are shared across many
+        # of the mixture-sums we compute below.
+        #
+        # TODO in previous block we see many alpha differ by integer amounts
         # -- could try to exploit digamma(z+1) = digamma(z) + 1/z
         for i in range(np):
-            alpha_ = common_cab[i, 1]
-            beta_ = common_cab[i, 2]
-            basis_chi[i, 0] = alpha_ / beta_
-            basis_chi[i, 1] = _approx_digamma_minus_log_b(alpha_, beta_)
+            alpha_ = basis[i, 1]
+            beta_ = basis[i, 2]
+            basis[i, 1] = alpha_ / beta_
+            basis[i, 2] = _approx_digamma_minus_log_b(alpha_, beta_)
 
         # i : destination state index
         for i in range(n):
@@ -130,10 +132,10 @@ cpdef const dtype_t[:, :] forward(
                 start = (n * (w - w_lo))
                 for j in range(n): # FIXME dense matrix. reimplement as sparse.
                     wj = start + j
-                    c2j = transition_matrix[i, j] * q[j, 0] * common_cab[wj, 0]
+                    c2j = transition_matrix[i, j] * q[j, 0] * basis[wj, 0]
                     z_i += c2j
-                    mixture_expected_rate += c2j * basis_chi[wj, 0]
-                    mixture_expected_log_rate += c2j * basis_chi[wj, 1]
+                    mixture_expected_rate += c2j * basis[wj, 1]
+                    mixture_expected_log_rate += c2j * basis[wj, 2]
 
             # Normalise so that mixture coefficients sum to unity
             inv_z_i = 1.0 / z_i
