@@ -123,7 +123,7 @@ class HybridPoissonHMM(BaseHMM):
             j = w - w_lo
             alpha_ = alpha + w
             beta_ = beta + 1.0
-            otq[:, (n*j):(n*(j+1)), 0] += c * self._signal_matrix[k-w] * neg_bin(w, alpha_, beta_)
+            otq[:, (n*j):(n*(j+1)), 0] += c * self._signal_matrix[k-w] * neg_bin(w, alpha, beta)
             otq[:, (n*j):(n*(j+1)), 1] = alpha_
             otq[:, (n*j):(n*(j+1)), 2] = beta_
         return otq

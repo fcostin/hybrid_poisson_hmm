@@ -33,7 +33,7 @@ cpdef const dtype_t[:, :] forward(
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start
 
-    cdef dtype_t alpha_, beta_, neg_bin_w_a_b, chi_0, z_i, z
+    cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, chi_0, z_i, z
 
     cdef BatchFitResult result
 
@@ -83,14 +83,15 @@ cpdef const dtype_t[:, :] forward(
             j = w - w_lo
             start = (n * j)
             for i in range(n):
-                alpha_ = q[i, 1] + w
-                beta_ = q[i, 2] + 1.0
-
+                alpha = q[i, 1]
+                beta = q[i, 2]
+                alpha_ = alpha + w
+                beta_ = beta + 1.0
                 # FIXME computing neg_bin_w_a_b costs approx 15% running time.
                 neg_bin_w_a_b = (
-                        (gamma(alpha_ + w) / (gamma(w + 1) * gamma(alpha_))) *
-                        ((beta_ / (beta_ + 1)) ** alpha_) *
-                        ((1.0 / (beta_ + 1)) ** w)
+                        (gamma(alpha + w) / (gamma(w + 1) * gamma(alpha))) *
+                        ((beta / (beta + 1)) ** alpha) *
+                        ((1.0 / (beta + 1)) ** w)
                 )
 
                 common_cab[start + i, 0] = signal_matrix[k - w][i] * neg_bin_w_a_b
