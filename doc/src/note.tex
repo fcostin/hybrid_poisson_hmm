@@ -642,7 +642,7 @@ The Poisson distribution and its conjugate prior Gamma distribution produce a cl
 \gammad(\lambda ; \alpha+k, \beta+1) \, .
 \nonumber
 \end{align}
-The penultimate factor in front of the Gamma distribution is known~\citep{gelman2013bayesian} to be the negative binomial density $k \sim \negbind\left(\alpha, \beta\right)$. Note that the upper parameter of the binomial coefficient may be negative when $k=0$ and $\alpha < 1$ -- one way to interpret this is to consider the definition $\binom{n}{k} = n! (k! (n-k)!)^{-1}$ over non-negative integers $n$ and $k$, recall that the factorial is extended over complex numbers by $\Gamma$, where at integers $n$ $\Gamma(n) = (n-1)!$, then extend $\binom{n}{k}$ by redefining it as $\binom{n}{k} = \Gamma(n+1) (\Gamma(k+1) \Gamma(n-k))^{-1}$ .
+The penultimate factor in front of the Gamma distribution is known~\citep{gelman2013bayesian} to be the negative binomial density $k \sim \negbind\left(\alpha, \beta\right)$. Note that the upper parameter of the binomial coefficient may be negative when $k=0$ and $\alpha < 1$ -- one way to interpret this is to consider the definition $\binom{n}{k} = n! (k! (n-k)!)^{-1}$ over non-negative integers $n$ and $k$, recall that the factorial is extended over complex numbers by $\Gamma$, where at integers $n$ $\Gamma(n) = (n-1)!$, then extend $\binom{n}{k}$ by redefining it as $\binom{n}{k} = \Gamma(n+1) (\Gamma(k+1) \Gamma(n-k+1))^{-1}$ .
 
 This identity can also be used to give a closed-form expression for the integral: 
 \begin{align}
