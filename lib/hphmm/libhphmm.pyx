@@ -1,5 +1,5 @@
 cimport cython
-from libc.math cimport tgamma as gamma, pow, log
+from libc.math cimport tgamma as gamma, pow, log, lgamma, exp
 
 ctypedef double dtype_t
 ctypedef int int_t
@@ -90,11 +90,16 @@ cpdef const dtype_t[:, :] forward(
                 beta = q[i, 2]
                 alpha_ = alpha + w
                 beta_ = beta + 1.0
-                # FIXME computing neg_bin_w_a_b costs approx 15% running time.
-                neg_bin_w_a_b = (
-                        (gamma(alpha + w) / (gamma(w + 1) * gamma(alpha))) *
-                        ((beta / (beta + 1)) ** alpha) *
-                        ((1.0 / (beta + 1)) ** w)
+
+                # Evaluate negative-binomial distribution at w with parameters
+                # alpha and beta.  This must be evaluated carefully when alpha
+                # & beta are large. E valuate the log of the expression to give
+                # large factors in numerator and denominator the chance to
+                # cancel each other.
+                neg_bin_w_a_b = exp(
+                    lgamma(alpha+w) - lgamma(w+1) - lgamma(alpha) +
+                    alpha * log(beta / (beta + 1)) +
+                    w * log(1.0 / (beta+1))
                 )
 
                 common_cab[start + i, 0] = signal_matrix[k - w][i] * neg_bin_w_a_b
