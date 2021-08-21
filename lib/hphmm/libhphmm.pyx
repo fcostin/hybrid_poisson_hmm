@@ -32,7 +32,7 @@ cpdef const dtype_t[:, :] forward(
         const dtype_t[:, :] q0):
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start
-    cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, chi_0, z_i, z
+    cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, z
     cdef BatchFitResult result
 
     cdef const dtype_t[:, :] q
@@ -108,19 +108,17 @@ cpdef const dtype_t[:, :] forward(
 
         # Precompute "characteristics"
         #   chi_0 := E[rate]
-        #   chi_1 := E[log(rate)] - log(chi_0)
+        #   chi_1 := E[log(rate)]
         #
-        # for each element of our Gamma "basis". digamma and logs are
-        # expensive to compute. This avoids recomputing digamma and log for
-        # terms that are shared across many mixture-sums.
+        # for each element of our Gamma "basis". This avoids recomputing
+        # some terms that that are shared across many mixture-sums.
         # FIXME in previous block we see many alpha differ by integer amounts
         # -- could try to exploit digamma(z+1) = digamma(z) + 1/z
         for i in range(np):
             alpha_ = common_cab[i, 1]
             beta_ = common_cab[i, 2]
-            chi_0 = alpha_ / beta_
-            basis_chi[i, 0] = chi_0
-            basis_chi[i, 1] = _approx_digamma_minus_log_b(alpha_, beta_) - log(chi_0)
+            basis_chi[i, 0] = alpha_ / beta_
+            basis_chi[i, 1] = _approx_digamma_minus_log_b(alpha_, beta_)
 
         # i : destination state index
         for i in range(n):
@@ -150,7 +148,7 @@ cpdef const dtype_t[:, :] forward(
                 mixture_chi[i, 0] += c2[j] * basis_chi[j, 0]
                 mixture_chi[i, 1] += c2[j] * basis_chi[j, 1]
 
-        result = batch_fit_from_characteristics(
+        result = batch_fit_from_expectations(
             mixture_chi,
             q_prime[:, 1],
             q_prime[:, 2],
@@ -171,16 +169,16 @@ cpdef const dtype_t[:, :] forward(
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef BatchFitResult batch_fit_from_characteristics(
+cdef BatchFitResult batch_fit_from_expectations(
         const dtype_t[:, :] chi,
         dtype_t[:] out_alpha,
         dtype_t[:] out_beta) nogil:
     """
-    By the characteristics chi of p, a convex combination of
+    By the expectations of p, a convex combination of
     Gamma distributions, we mean:
 
     chi_0 := E_p [ rate ]
-    chi_1 := E_p [ log(rate) ] - log ( chi_0 )
+    chi_1 := E_p [ log(rate) ]
     """
 
     cdef index_t n_mixtures, i
@@ -194,13 +192,13 @@ cdef BatchFitResult batch_fit_from_characteristics(
     result.n_issues = 0
     result.iters = 2 * n_mixtures
 
-    # Rough compute time breakdown TODO out of date, remeasure.
+    # Rough compute time breakdown:
     # 37% for first halley step
     # 37% for second halley step
     # 26% for everything else
 
     for i in range(n_mixtures):
-        y = chi[i, 1]
+        y = chi[i, 1] - log(chi[i, 0])
         x = rough_inverse_f(y)
         hs = _approx_f_halley_step(x, y)
         x += hs.step
