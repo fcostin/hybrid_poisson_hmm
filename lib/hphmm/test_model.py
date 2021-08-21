@@ -5,7 +5,8 @@ import numpy.typing
 from scipy.stats import poisson
 import pytest
 
-from .model import HybridPoissonHMMv2 as HybridPoissonHMM
+from .model import HybridPoissonHMMv2 as HybridPoissonHMM, neg_bin
+
 
 class ModelParameters(typing.NamedTuple):
     transition_matrix: numpy.typing.NDArray
@@ -271,3 +272,74 @@ def test_two_independent_state_mixed_noise_and_signal_can_infer_most_probable_st
     assert (0.0 < final_c_state_0 and
             0.0 < final_c_state_1 and
             final_c_state_0 < epsilon * final_c_state_1)
+
+
+def test_accuracy_of_gamma_mixture_projection():
+
+    # Here is a Gamma distribution mixture
+    c = numpy.array([0.38354495, 0.36417459, 0.25228047])
+    alphas = numpy.array([3.81453454, 14.25942937, 0.65067866])
+    betas = numpy.array([1.79128631, 5.07242982, 2.75626998])
+
+    # The best single Gamma distribution approximation to the
+    # mixture has approximately the following parameters:
+    expected_projected_alpha = 0.90957462
+    expected_projected_beta = 0.47870646
+
+    # Define a contrived HMM scenario where we can force the approximation
+    # of the above Gamma mixture to be computed:
+
+    n_states = len(c)
+
+    # 1/n probability to transition between any pair of states
+    transition_matrix = numpy.ones((n_states, n_states), dtype=numpy.float64)
+    transition_matrix /= float(n_states)
+
+    # All states uniformly emit the zero signal
+    signal_matrix = numpy.ones((1, n_states), dtype=numpy.float64)
+
+    # Define a prior using the Gamma mixture data to force the hphmm into
+    # computing the above mixture projection problem:
+    # -     we subtract 1 from beta as we expect that the condition on
+    #       observations operator to increment the beta of every Gamma
+    #       distribution in the mixture by one when conditioned on the
+    #       sole observation.
+    # -     we divide all the mixture coefficients by
+    #       neg_bin(0, alphas, betas-1), as conditioning on the observation
+    #       will multiply our Gamma "basis" functions nonuniformly by those
+    #       coefficients
+    # -     we need to renormalise the mixture coefficients to ensure they
+    #       sum to unity
+
+    twist = neg_bin(0, alphas, betas-1.0)
+
+    twisted_c = c / twist
+    twisted_c /= numpy.sum(twisted_c)
+
+    q0 = numpy.zeros(shape=(n_states, 3), dtype=numpy.float64)
+    q0[:, 0] = twisted_c
+    q0[:, 1] = alphas
+    q0[:, 2] = betas - 1.0
+
+    # There is a single timestep, a single event count of zero is observed.
+    observations = numpy.asarray([0])
+
+    n_observations = len(observations)
+
+    model = HybridPoissonHMM(
+        transition_matrix=transition_matrix,
+        signal_matrix=signal_matrix,
+    )
+
+    q = model.forward(observations, q0)
+
+    # We expect all hidden states to have uniform probability, since the
+    # transition matrix mixes everything uniformly.
+    assert numpy.allclose(1.0 / n_states, q[:, 0])
+
+    # We expect the (alpha, beta) parameters of the Gamma distribution
+    # associated with each state to be similar to the expected parameters, in
+    # the sense of the expected rate and expected log rate of the distributions.
+
+    assert numpy.allclose(expected_projected_alpha, numpy.asarray(q[:, 1]))
+    assert numpy.allclose(expected_projected_beta, numpy.asarray(q[:, 2]))
