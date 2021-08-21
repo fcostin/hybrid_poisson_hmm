@@ -5,7 +5,7 @@ import numpy.typing
 from scipy.stats import poisson
 import pytest
 
-from .model import HybridPoissonHMM
+from .model import HybridPoissonHMMv2 as HybridPoissonHMM
 
 class ModelParameters(typing.NamedTuple):
     transition_matrix: numpy.typing.NDArray

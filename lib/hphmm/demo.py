@@ -32,7 +32,7 @@ Y_t := Z_t + K_t
 import numpy
 from scipy.stats import poisson
 
-from .model import HybridPoissonHMM
+from .model import HybridPoissonHMMv2 as HybridPoissonHMM
 
 
 def main():

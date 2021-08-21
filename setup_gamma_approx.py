@@ -3,7 +3,7 @@ from Cython.Build import cythonize
 
 setup(
     name = "gamma_approx",
-    packages = find_packages("lib"),
+    packages = find_packages("lib/gamma_approx"),
     package_dir = {"": "lib"},
     package_data = {},
     python_requires=">=3.5",
@@ -18,7 +18,7 @@ setup(
         compiler_directives={
                     'language_level' : "3", # Py3.
         },
-        # Generate a an annotated report of the cython code highlighting
+        # Generate an annotated report of the cython code highlighting
         # points where interactions with the python interpreter occur.
         annotate=True,
     ),

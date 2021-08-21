@@ -27,6 +27,8 @@ from gamma_approx import (
     fit_gamma_dist_to_gamma_mixture,
     rough_fit_batch_gamma_dists_to_gamma_mixtures,
 )
+from .base import BaseHMM
+from .libhphmm import forward as _forward
 
 
 def neg_bin(k, a, b):
@@ -35,8 +37,7 @@ def neg_bin(k, a, b):
     # (ii) numerical difficulties
 
     return (
-        binom(1 + k - 1, k) *
-        gamma(1 + k) / (gamma(k+1) * gamma(1)) *
+        binom(a + k - 1, k) *
         ((b/(b+1)) ** a) *
         ((1.0/(b+1)) ** k)
     )
@@ -48,7 +49,7 @@ def ensure_sane_transition_matrix(transition_matrix):
     return transition_matrix
 
 
-class HybridPoissonHMM(object):
+class HybridPoissonHMM(BaseHMM):
 
     def __init__(self, transition_matrix, signal_matrix):
         super().__init__()
@@ -208,3 +209,17 @@ class HybridPoissonHMM(object):
             # print('q_prime = %r' % (q_prime,))
             q = q_prime
         return q
+
+
+class HybridPoissonHMMv2(BaseHMM):
+
+    def __init__(self, transition_matrix, signal_matrix):
+        super().__init__()
+        self._transition_matrix = ensure_sane_transition_matrix(transition_matrix) # n by n state transition matrix
+        self._signal_matrix = signal_matrix # K by n
+        self._max_k = numpy.shape(signal_matrix)[0] - 1
+
+
+    def forward(self, observations, q0):
+        observations = numpy.asarray(observations, dtype=numpy.int32)
+        return _forward(self._transition_matrix, self._signal_matrix, observations, q0)
