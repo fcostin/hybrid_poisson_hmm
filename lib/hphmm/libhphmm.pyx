@@ -1,5 +1,5 @@
 cimport cython
-from libc.math cimport tgamma as gamma, pow, log, lgamma, exp
+from libc.math cimport pow, log
 
 ctypedef double dtype_t
 ctypedef int int_t
@@ -22,6 +22,32 @@ cdef struct BatchFitResult:
 import numpy
 
 
+@cython.cdivision(True)
+cdef inline dtype_t neg_bin(const int_t k, const dtype_t a, const dtype_t b):
+    # negative-binomial distribution at k with parameters a and b.
+
+    # Express the binomial coefficient "a+k-1 choose k" in terms of the
+    # Gamma function G(z):
+    #                           G(a + k)
+    #    (a+k-1 choose k)  =    -------
+    #                           G(a) k!
+    #
+    # As the Gamma function satisfies G(z+1) = z G(z) we can reduce G(a+k)
+    # to G(a) * prod_{i=1}^{k-1} (a-i), giving
+    #
+    #   (a+k-1 choose k)   =   prod_{i=0}^{k-1} (a+i) / (i+1) .
+
+    cdef dtype_t c, p, q
+    cdef int_t i
+
+    c = 1.0
+    for i in range(0, k):
+        c *= (a + i) / (i + 1)
+    p = b/(b+1.0)
+    q = 1.0 - p
+    return c * pow(p, a) * pow(q, k)
+
+
 # The transition matrix tr_matrix is encoded as a Compressed Sparse Matrix.
 # For each row index i, the corresponding column indices j and coefficients
 # a_{i,j} are given by:
@@ -39,8 +65,8 @@ cpdef const dtype_t[:, :] forward(
         const dtype_t[:, :] q0):
 
     cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj, iota
-    cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, inv_z_i, z, inv_z
-    cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j, lgamma_wp1
+    cdef dtype_t alpha, beta, alpha_, beta_, z_i, inv_z_i, z, inv_z
+    cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j
     cdef BatchFitResult result
 
     cdef const dtype_t[:, :] q
@@ -90,25 +116,13 @@ cpdef const dtype_t[:, :] forward(
         for w in range(w_lo, w_hi):
             j = w - w_lo
             start = (n * j)
-            lgamma_wp1 = lgamma(w+1)
             for i in range(n):
                 alpha = q[i, 1]
                 beta = q[i, 2]
                 alpha_ = alpha + w
                 beta_ = beta + 1.0
 
-                # Evaluate negative-binomial distribution at w with parameters
-                # alpha and beta.  This must be evaluated carefully when alpha
-                # & beta are large. Evaluate the log of the expression to give
-                # large factors in numerator and denominator the chance to
-                # cancel each other.
-                neg_bin_w_a_b = exp(
-                    lgamma(alpha+w) - lgamma_wp1 - lgamma(alpha) +
-                    alpha * log(beta / (beta + 1)) +
-                    w * log(1.0 / (beta+1))
-                )
-
-                basis[start + i, 0] = s_matrix[k - w][i] * neg_bin_w_a_b
+                basis[start + i, 0] = s_matrix[k - w][i] * neg_bin(w, alpha, beta)
 
                 # Precompute and store the expected rate and log rate of each
                 # Gamma distribution:
