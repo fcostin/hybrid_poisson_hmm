@@ -111,7 +111,6 @@ cpdef const dtype_t[:, :] forward(
         # Construct a "basis" of Gamma distributions by taking all the
         # individual Gamma distributions we are tracking, and conditioning
         # them on this timestep's current observation.
-        basis[:np, :] = 0.0
         for w in range(w_lo, w_hi):
             j = w - w_lo
             start = (n * j)
