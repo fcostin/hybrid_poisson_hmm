@@ -22,16 +22,23 @@ cdef struct BatchFitResult:
 import numpy
 
 
+# The transition matrix tr_matrix is encoded as a Compressed Sparse Matrix.
+# For each row index i, the corresponding column indices j and coefficients
+# a_{i,j} are given by:
+# j           in  cols[indptr[i]:indptr[i+1]
+# a_{i,j}     in  data[indptr[i]:indptr[i+1]
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cpdef const dtype_t[:, :] forward(
-        const dtype_t[:, :] transition_matrix,
-        const dtype_t[:, :] signal_matrix,
+        const index_t[:] tr_matrix_indptr, # transition matrix
+        const index_t[:] tr_matrix_cols, # transition matrix
+        const dtype_t[:] tr_matrix_data, # transition matrix
+        const dtype_t[:, :] s_matrix, # signal matrix
         const int_t[:] observations,
         const dtype_t[:, :] q0):
 
-    cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj
+    cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj, iota
     cdef dtype_t alpha, beta, alpha_, beta_, neg_bin_w_a_b, z_i, inv_z_i, z, inv_z
     cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j, lgamma_wp1
     cdef BatchFitResult result
@@ -43,7 +50,7 @@ cpdef const dtype_t[:, :] forward(
 
     n = q0.shape[0]
     n_obs = observations.shape[0]
-    max_k = signal_matrix.shape[0] - 1
+    max_k = s_matrix.shape[0] - 1
 
     # Some of the work buffers dimensions need to have capacity proportional
     # to the observed event count + 1, in order to store coefficients and
@@ -101,7 +108,7 @@ cpdef const dtype_t[:, :] forward(
                     w * log(1.0 / (beta+1))
                 )
 
-                basis[start + i, 0] = signal_matrix[k - w][i] * neg_bin_w_a_b
+                basis[start + i, 0] = s_matrix[k - w][i] * neg_bin_w_a_b
 
                 # Precompute and store the expected rate and log rate of each
                 # Gamma distribution:
@@ -131,9 +138,10 @@ cpdef const dtype_t[:, :] forward(
             mixture_expected_log_rate = 0.0
             for w in range(w_lo, w_hi):
                 start = (n * (w - w_lo))
-                for j in range(n): # FIXME dense matrix. reimplement as sparse.
+                for iota in range(tr_matrix_indptr[i], tr_matrix_indptr[i + 1]):
+                    j = tr_matrix_cols[iota]
                     wj = start + j
-                    c2j = transition_matrix[i, j] * q[j, 0] * basis[wj, 0]
+                    c2j = tr_matrix_data[iota] * q[j, 0] * basis[wj, 0]
                     z_i += c2j
                     mixture_expected_rate += c2j * basis[wj, 1]
                     mixture_expected_log_rate += c2j * basis[wj, 2]

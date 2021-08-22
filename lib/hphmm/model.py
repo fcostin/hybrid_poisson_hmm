@@ -20,8 +20,11 @@ Neg-Bin(k ; a, b) = (a + k - 1 choose k) (b/(b+1))^a (1/(b+1))^k
 
 """
 
+
 import numpy
 from scipy.special import binom, gamma
+import numpy.typing
+import typing
 
 from gamma_approx import (
     fit_gamma_dist_to_gamma_mixture,
@@ -48,6 +51,39 @@ def ensure_sane_transition_matrix(transition_matrix):
     assert numpy.all(numpy.isclose(numpy.sum(transition_matrix[:, :], axis=1), 1.0))
     return transition_matrix
 
+
+class CSRMatrix(typing.NamedTuple):
+    indptr: numpy.typing.NDArray
+    cols: numpy.typing.NDArray
+    data: numpy.typing.NDArray
+
+
+def make_csr_matrix_from_dense(a):
+    n, m = a.shape
+    nonzeros = 0
+    for i in range(n):
+        for j in range(m):
+            if a[i][j] != 0.0:
+                nonzeros += 1
+    indptr = numpy.zeros(shape=(n + 1, ), dtype=numpy.int64)
+    cols = numpy.zeros(shape=(nonzeros, ), dtype=numpy.int64)
+    data = numpy.zeros(shape=(nonzeros, ), dtype=numpy.float64)
+
+    indptr[0] = 0
+    k = 0
+    for i in range(n):
+        for j in range(m):
+            if a[i][j] != 0.0:
+                cols[k] = j
+                data[k] = a[i, j]
+                k += 1
+        indptr[i+1] = k
+
+    return CSRMatrix(
+        indptr=indptr,
+        cols=cols,
+        data=data,
+    )
 
 class HybridPoissonHMM(BaseHMM):
 
@@ -216,10 +252,18 @@ class HybridPoissonHMMv2(BaseHMM):
     def __init__(self, transition_matrix, signal_matrix):
         super().__init__()
         self._transition_matrix = ensure_sane_transition_matrix(transition_matrix) # n by n state transition matrix
+        self._csr_transition_matrix = make_csr_matrix_from_dense(self._transition_matrix)
         self._signal_matrix = signal_matrix # K by n
         self._max_k = numpy.shape(signal_matrix)[0] - 1
 
 
     def forward(self, observations, q0):
         observations = numpy.asarray(observations, dtype=numpy.int32)
-        return _forward(self._transition_matrix, self._signal_matrix, observations, q0)
+        return _forward(
+            self._csr_transition_matrix.indptr,
+            self._csr_transition_matrix.cols,
+            self._csr_transition_matrix.data,
+            self._signal_matrix,
+            observations,
+            q0,
+        )
