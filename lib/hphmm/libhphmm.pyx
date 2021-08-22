@@ -69,10 +69,9 @@ cpdef const dtype_t[:, :] forward(
     cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j
     cdef BatchFitResult result
 
-    cdef const dtype_t[:, :] q
+    cdef dtype_t[:, :] q
     cdef dtype_t[:, :] basis
     cdef dtype_t[:, :] mixture_chi
-    cdef dtype_t[:, :] q_prime
 
     n = q0.shape[0]
     n_obs = observations.shape[0]
@@ -87,9 +86,9 @@ cpdef const dtype_t[:, :] forward(
     # Allocate work buffers.
     basis = numpy.zeros((n * max_p, 3), dtype=numpy.float64)
     mixture_chi = numpy.zeros(shape=(n, 2), dtype=numpy.float64)
-    q_prime = numpy.zeros(shape=(n, 3), dtype=numpy.float64)
+    q = numpy.zeros(shape=(n, 3), dtype=numpy.float64)
 
-    q = q0
+    q[:, :] = q0
 
     for t in range(n_obs):
         k = observations[t]
@@ -164,24 +163,22 @@ cpdef const dtype_t[:, :] forward(
             inv_z_i = 1.0 / z_i
             mixture_chi[i, 0] = inv_z_i * mixture_expected_rate
             mixture_chi[i, 1] = inv_z_i * mixture_expected_log_rate
-            q_prime[i, 0] = z_i
+            q[i, 0] = z_i
 
-        result = batch_fit_from_expectations(
+        batch_fit_from_expectations(
             mixture_chi,
-            q_prime[:, 1],
-            q_prime[:, 2],
+            q[:, 1],
+            q[:, 2],
         )
-        assert result.status == 0, repr(result)
 
         # Normalise
         z = 0.0
         for i in range(n):
-            z += q_prime[i, 0]
+            z += q[i, 0]
         assert z > 0.0
         inv_z = 1.0 / z
         for i in range(n):
-            q_prime[i, 0] = inv_z * q_prime[i, 0]
-        q = q_prime
+            q[i, 0] = inv_z * q[i, 0]
     return q
 
 
