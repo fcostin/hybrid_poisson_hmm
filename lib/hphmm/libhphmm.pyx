@@ -122,7 +122,7 @@ cpdef const dtype_t[:, :] forward(
                 alpha_ = alpha + w
                 beta_ = beta + 1.0
 
-                basis[start + i, 0] = s_matrix[k - w][i] * neg_bin(w, alpha, beta)
+                basis[start + i, 0] = q[i, 0] * s_matrix[k - w][i] * neg_bin(w, alpha, beta)
 
                 # Precompute and store the expected rate and log rate of each
                 # Gamma distribution:
@@ -155,7 +155,7 @@ cpdef const dtype_t[:, :] forward(
                 for iota in range(tr_matrix_indptr[i], tr_matrix_indptr[i + 1]):
                     j = tr_matrix_cols[iota]
                     wj = start + j
-                    c2j = tr_matrix_data[iota] * q[j, 0] * basis[wj, 0]
+                    c2j = tr_matrix_data[iota] * basis[wj, 0]
                     z_i += c2j
                     mixture_expected_rate += c2j * basis[wj, 1]
                     mixture_expected_log_rate += c2j * basis[wj, 2]
