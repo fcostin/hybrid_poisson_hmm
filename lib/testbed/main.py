@@ -18,6 +18,7 @@ from hphmm.model import (
 
 def parse_args():
     p = argparse.ArgumentParser()
+    p.add_argument('-n', '--n-problems', type=int, default=5, help='optional number of problems')
     p.add_argument('-s', '--seed', type=str, default='', help='optional seed, as hex string, e.g. 0xc0ffee')
     return p.parse_args()
 
@@ -28,6 +29,75 @@ def make_seedstring():
 
 def parse_seedstring(seedstring):
     return int(seedstring, base=16)
+
+
+class HPMM:
+    def __init__(self):
+        pass
+
+    def __repr__(self):
+        return 'HPMM()'
+
+    def prepare(self, problem):
+        hphmm = HybridPoissonHMM(
+            transition_matrix=problem.model.transition_matrix,
+            signal_matrix=problem.model.signal_matrix,
+        )
+        q0 = numpy.zeros((problem.model.n, 3), dtype=numpy.float64)
+        q0[:, 0] = problem.state_prior
+        q0[:, 1] = problem.noise_model.prior_alpha
+        q0[:, 2] = problem.noise_model.prior_beta
+        return hphmm, q0
+
+
+class FGHMM:
+    def __init__(self, r):
+        self.r = r
+
+    def __repr__(self):
+        return 'FGHMM(r=%r)' % (self.r, )
+
+    def prepare(self, problem):
+        r = self.r
+        base_model = problem.model
+        base_n = problem.model.n
+
+        # Approximate possible noise levels with r different pinned Gamma
+        # distributions. Partition the unit interval [0, 1] into r equally
+        # sized sub intervals. Pick the midpoint of each. Use these to
+        # compute quantiles of the prior Gamma(alpha, beta) distribution over
+        # the noise rate lambda. For the i-th lambda, define (alpha_i, beta_i)
+        # as
+        #   alpha_i := lambda_i * beta_i
+        #   beta_i := beta + n
+        # where n is the total number of observations in the dataset (the
+        # number of timesteps).
+        prior_alpha = problem.noise_model.prior_alpha
+        prior_beta = problem.noise_model.prior_beta
+        midpoints = (1.0 / r) * (0.5 + numpy.arange(r, dtype=numpy.float64))
+        lambdas = scipy.stats.gamma.ppf(midpoints, a=prior_alpha,
+                                        scale=(1.0 / prior_beta))
+        fixed_betas = (prior_beta + problem.n_timesteps) * numpy.ones((r,), dtype=numpy.float64)
+        fixed_alphas = lambdas * fixed_betas
+
+        alpha_beta = numpy.zeros((r, 2), dtype=numpy.float64)
+        alpha_beta[:, 0] = fixed_alphas
+        alpha_beta[:, 1] = fixed_betas
+
+        p0 = numpy.zeros((r, base_n), dtype=numpy.float64)
+        for i in range(r):
+            p0[i, :] = problem.state_prior
+        z = numpy.sum(p0)
+        inv_z = 1.0 / z
+        p0 *= inv_z
+
+        fghmm = FixedGammaHMM(
+            transition_matrix=base_model.transition_matrix,
+            signal_matrix=base_model.signal_matrix,
+            alpha_beta=alpha_beta,
+        )
+        return fghmm, p0
+
 
 
 def main():
@@ -44,91 +114,42 @@ def main():
     seed = parse_seedstring(seedstring)
     rng = numpy.random.default_rng(seed)
 
-    n_problems = 20
-    problem = {}
+    method_factories = [
+        HPMM(),
+        FGHMM(r=5),
+        FGHMM(r=10),
+        FGHMM(r=20),
+    ]
 
-    print('preparing synthetic problems')
+    n_problems = args.n_problems
+    problems = {}
+
+    print('preparing %d synthetic problems' % (n_problems, ))
     for i in range(n_problems):
         print('.', end='', flush=True)
-        problem[i] = make_problem(rng)
+        problems[i] = make_problem(rng)
     print('done')
 
-    fghmm_rs = (5, 10, 20)
+    n_methods = len(method_factories)
 
-    method_names = ['hphmm'] + ['fghmm/%d' % (r, ) for r in fghmm_rs]
-    n_methods = 1 + len(fghmm_rs)
     log_z_by_problem_method = numpy.zeros((n_problems, n_methods), dtype=numpy.float64)
 
-    print('running HPHMM on synthetic problems')
+    print('running competing methods on synthetic problems')
     method_j = 0
-    for problem_i in range(n_problems):
-        p = problem[problem_i]
-        hphmm = HybridPoissonHMM(
-            transition_matrix=p.model.transition_matrix,
-            signal_matrix=p.model.signal_matrix,
-        )
-        q0 = numpy.zeros((p.model.n, 3), dtype=numpy.float64)
-        q0[:, 0] = p.state_prior
-        q0[:, 1] = p.noise_model.prior_alpha
-        q0[:, 2] = p.noise_model.prior_beta
-        q, log_z = hphmm.forward(p.observations, q0)
-        print('log_z = %r' % (log_z, ))
-        log_z_by_problem_method[problem_i, method_j] = log_z
-
-    for r in fghmm_rs:
-        method_j += 1
-        print('running fixed-Gamma HMM (r=%d) on synthetic problems' % (r, ))
+    for method_factory in method_factories:
         for problem_i in range(n_problems):
-            p = problem[problem_i]
-
-            base_model = p.model
-            base_n = p.model.n
-
-            # Approximate possible noise levels with r different pinned Gamma
-            # distributions. Partition the unit interval [0, 1] into r equally
-            # sized sub intervals. Pick the midpoint of each. Use these to
-            # compute quantiles of the prior Gamma(alpha, beta) distribution over
-            # the noise rate lambda. For the i-th lambda, define (alpha_i, beta_i)
-            # as
-            #   alpha_i := lambda_i * beta_i
-            #   beta_i := beta + n
-            # where n is the total number of observations in the dataset (the
-            # number of timesteps).
-            prior_alpha = p.noise_model.prior_alpha
-            prior_beta = p.noise_model.prior_beta
-            midpoints = (1.0/r) * (0.5 + numpy.arange(r, dtype=numpy.float64))
-            lambdas = scipy.stats.gamma.ppf(midpoints, a=prior_alpha, scale=(1.0 / prior_beta))
-            fixed_betas = (prior_beta + p.n_timesteps) * numpy.ones((r, ), dtype=numpy.float64)
-            fixed_alphas = lambdas * fixed_betas
-
-            alpha_beta = numpy.zeros((r, 2), dtype=numpy.float64)
-            alpha_beta[:, 0] = fixed_alphas
-            alpha_beta[:, 1] = fixed_betas
-
-            p0 = numpy.zeros((r, base_n), dtype=numpy.float64)
-            for i in range(r):
-                p0[i, :] = p.state_prior
-            z = numpy.sum(p0)
-            inv_z = 1.0 / z
-            p0 *= inv_z
-
-            fghmm = FixedGammaHMM(
-                transition_matrix=base_model.transition_matrix,
-                signal_matrix=base_model.signal_matrix,
-                alpha_beta=alpha_beta,
-            )
-
-            p, log_z = fghmm.forward(p.observations, p0)
-            print('log_z = %r' % (log_z,))
+            problem = problems[problem_i]
+            model, p0 = method_factory.prepare(problem)
+            p, log_z = model.forward(problem.observations, p0)
+            print('method %12r\tproblem %d\tlog_z = %r' % (method_factory, problem_i, log_z, ))
             log_z_by_problem_method[problem_i, method_j] = log_z
-        print('done')
+        method_j += 1
 
     print('results:')
-
-    colheaders = '\t'.join('%8s' % (name, ) for name in method_names)
+    colheaders = '\t'.join('%12s' % (repr(f), ) for f in method_factories)
     print(colheaders)
     for i in range(n_problems):
-        line = '\t'.join('%8.1f' % (log_z_by_problem_method[i, j], ) for j in range(n_methods))
+        line = '\t'.join('%12.1f' % (log_z_by_problem_method[i, j], ) for j in range(n_methods))
         print(line)
 
 

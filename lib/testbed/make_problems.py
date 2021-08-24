@@ -67,7 +67,7 @@ def disjoint_union_of_csr_matrices(n: int, offsets: int, sub_matrices: typing.Se
     )
 
 
-def disjoint_union_of_models(sub_models: typing.Sequence[Model]) -> Model:
+def disjoint_union_of_models(sub_models: typing.Sequence[Model], sanitycheck=False) -> Model:
     m = len(sub_models)
     sizes = numpy.asarray([subm.n for subm in sub_models], dtype=int)
     n = sum(sizes)
@@ -90,21 +90,22 @@ def disjoint_union_of_models(sub_models: typing.Sequence[Model]) -> Model:
     k_max = numpy.amax([subm.signal_matrix.shape[0] for subm in sub_models])
     signal_matrix = numpy.zeros((k_max, n), dtype=numpy.float64)
     for sub_model_i, sub_model in enumerate(sub_models):
-        assert sub_model.signal_matrix.shape[1] == sizes[sub_model_i]
-        for i in range(sizes[sub_model_i]):
-            assert numpy.all(sub_model.signal_matrix[:, i] >= 0.0)
-            assert numpy.all(sub_model.signal_matrix[:, i] <= 1.0)
-            assert numpy.isclose(1.0, numpy.sum(sub_model.signal_matrix[:, i]))
+        if sanitycheck:
+            assert sub_model.signal_matrix.shape[1] == sizes[sub_model_i]
+            for i in range(sizes[sub_model_i]):
+                assert numpy.all(sub_model.signal_matrix[:, i] >= 0.0)
+                assert numpy.all(sub_model.signal_matrix[:, i] <= 1.0)
+                assert numpy.isclose(1.0, numpy.sum(sub_model.signal_matrix[:, i]))
         k = sub_model.signal_matrix.shape[0]
         start = index_global_from_local(sub_model_i, 0)
         end = index_global_from_local(sub_model_i, sub_model.signal_matrix.shape[1])
         signal_matrix[:k, start:end] = sub_model.signal_matrix
 
-    # Sanity check signal matrix
-    for i in range(n):
-        assert numpy.all(signal_matrix[:, i] >= 0.0)
-        assert numpy.all(signal_matrix[:, i] <= 1.0)
-        assert numpy.isclose(1.0, numpy.sum(signal_matrix[:, i]))
+    if sanitycheck:
+        for i in range(n):
+            assert numpy.all(signal_matrix[:, i] >= 0.0)
+            assert numpy.all(signal_matrix[:, i] <= 1.0)
+            assert numpy.isclose(1.0, numpy.sum(signal_matrix[:, i]))
     result = Model(
         n=n,
         transition_matrix=transition_matrix,
@@ -113,7 +114,7 @@ def disjoint_union_of_models(sub_models: typing.Sequence[Model]) -> Model:
     return result
 
 
-def make_model(rng, n_submodels):
+def make_model(rng, n_submodels, sanitycheck):
     sub_models = []
     for sub_model_i in range(n_submodels):
         # Make the i-th sub-model
@@ -147,8 +148,9 @@ def make_model(rng, n_submodels):
             transitions[(i+1)%n, i] = fwd_weight[i]
             transitions[(i-1)%n, i] = rev_weight[i]
 
-        for i in range(n):
-            assert numpy.isclose(1.0, numpy.sum(transitions[:, i]))
+        if sanitycheck:
+            for i in range(n):
+                assert numpy.isclose(1.0, numpy.sum(transitions[:, i]))
 
         # Define signal matrix.
 
@@ -165,10 +167,11 @@ def make_model(rng, n_submodels):
             weights /= numpy.sum(weights)
             signal_matrix[:k, i] = weights
 
-        for i in range(n):
-            assert numpy.all(signal_matrix[:, i] >= 0.0)
-            assert numpy.all(signal_matrix[:, i] <= 1.0)
-            assert numpy.isclose(1.0, numpy.sum(signal_matrix[:, i]))
+        if sanitycheck:
+            for i in range(n):
+                assert numpy.all(signal_matrix[:, i] >= 0.0)
+                assert numpy.all(signal_matrix[:, i] <= 1.0)
+                assert numpy.isclose(1.0, numpy.sum(signal_matrix[:, i]))
 
         sub_models.append(
             Model(
@@ -177,14 +180,19 @@ def make_model(rng, n_submodels):
                 signal_matrix=signal_matrix,
             )
         )
-    return disjoint_union_of_models(sub_models)
+    return disjoint_union_of_models(sub_models, sanitycheck=sanitycheck)
 
 
-def make_problem(rng):
+def make_problem(rng, sanitycheck=False) -> Problem:
+    """
+    :param rng:  numpy random generator to use
+    :param sanitycheck: enable very slow assertion checking?
+    :return: Problem
+    """
     n_timesteps = uniform_integer(rng, 100, 500)
 
     n_submodels = uniform_integer(rng, 50, 500)
-    model = make_model(rng, n_submodels)
+    model = make_model(rng, n_submodels, sanitycheck=sanitycheck)
 
     state_prior = (1.0 / model.n) * numpy.ones((model.n,), dtype=numpy.float64)
 
@@ -204,34 +212,8 @@ def make_problem(rng):
     )
 
     noise = scipy.stats.poisson.rvs(noise_rate, size=n_timesteps, random_state=rng)
-    signal = numpy.zeros((n_timesteps,), dtype=int)
-    state_trajectory = numpy.zeros((n_timesteps+1, ), dtype=int)
 
-    states = numpy.arange(model.n)
-    state = rng.choice(states, p=state_prior)
-    tr_matrix = model.transition_matrix
-    s_matrix = model.signal_matrix
-    ks = numpy.arange(s_matrix.shape[0])
-    for t in range(n_timesteps):
-        # Sample state
-        state_trajectory[t] = state
-        # State transition
-        # FIXME CSR is the completely wrong structure for sampling. We want CSC
-        next_states = []
-        transition_probabilities = []
-        for i in range(model.n):
-            start = tr_matrix.indptr[i]
-            end = tr_matrix.indptr[i + 1]
-            for j in range(start, end):
-                if tr_matrix.cols[j] == state:
-                    next_states.append(i)
-                    transition_probabilities.append(tr_matrix.data[j])
-        state_prime = rng.choice(next_states, p=transition_probabilities)
-        # Sample signal
-        signal[t] = rng.choice(ks, p=s_matrix[:, state])
-        # Advance
-        state = state_prime
-    state_trajectory[n_timesteps] = state
+    state_trajectory, signal = sample_trajectory(rng, model, state_prior, n_timesteps)
 
     observations = signal + noise
 
@@ -245,3 +227,74 @@ def make_problem(rng):
         noise=noise,
         observations=observations,
     )
+
+
+def transpose_csr_matrix(a: CSRMatrix):
+    n = len(a.indptr) - 1
+    nonzeros = len(a.data)
+
+    rows = numpy.zeros(shape=(nonzeros, ), dtype=numpy.int64)
+    k = 0
+    for row in range(n):
+        start = a.indptr[row]
+        end = a.indptr[row+1]
+        n_elems = end - start
+        rows[k:k+n_elems] = row
+        k += n_elems
+
+    cols = a.cols
+    data = a.data
+
+    order = numpy.argsort(cols)
+
+    cols = cols[order]
+    rows = rows[order]
+    data = data[order]
+
+    cols, rows = rows, cols  # transpose
+
+    indptr = numpy.zeros(shape=(n + 1, ), dtype=numpy.int64)
+    k = 0
+    for r in range(n):
+        indptr[r] = k
+        if r < rows[k]:
+            continue
+        while k < nonzeros and r == rows[k]:
+            k += 1
+    indptr[n-1] = k
+
+    return CSRMatrix(
+        indptr=indptr,
+        cols=cols,
+        data=data,
+    )
+
+
+def sample_trajectory(rng, model, state_prior, n_timesteps):
+    signal = numpy.zeros((n_timesteps,), dtype=int)
+    state_trajectory = numpy.zeros((n_timesteps+1, ), dtype=int)
+
+    states = numpy.arange(model.n)
+    state = rng.choice(states, p=state_prior)
+    tr_matrix = model.transition_matrix
+    s_matrix = model.signal_matrix
+    ks = numpy.arange(s_matrix.shape[0])
+
+    # CSR is exactly wrong encoding to efficiently sample a next state
+    # from current state. So transpose it.
+    tr_matrix_t = transpose_csr_matrix(tr_matrix)
+
+    for t in range(n_timesteps):
+        # Sample state
+        state_trajectory[t] = state
+        # State transition
+        start = tr_matrix_t.indptr[state]
+        end = tr_matrix_t.indptr[state+1]
+        state_prime = rng.choice(tr_matrix_t.cols[start:end], p=tr_matrix_t.data[start:end])
+        # Sample signal
+        signal[t] = rng.choice(ks, p=s_matrix[:, state])
+        # Advance
+        state = state_prime
+    state_trajectory[n_timesteps] = state
+
+    return state_trajectory, signal
