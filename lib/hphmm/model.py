@@ -31,7 +31,11 @@ from gamma_approx import (
     rough_fit_batch_gamma_dists_to_gamma_mixtures,
 )
 from .base import BaseHMM
-from .libhphmm import forward as _forward
+from .libhphmm import (
+    forward as _forward,
+    fixed_gamma_forward as _fixed_gamma_forward,
+    fixed_gamma_forward_logaddexp as _fixed_gamma_forward_logaddexp,
+)
 
 
 def neg_bin(k, a, b):
@@ -228,6 +232,8 @@ class HybridPoissonHMM(BaseHMM):
     def forward(self, observations, q0):
         q = q0
 
+        log_z = 0.0
+
         for t, y_t in enumerate(observations):
             # print('[t=%r]: observed y_t = %r' % (t, y_t, ))
             # q: structured array, shape (n, ) of records (c, alpha, beta)
@@ -239,27 +245,31 @@ class HybridPoissonHMM(BaseHMM):
             # print('tq = %r' % (tq, ))
             otq = self.observation_operator(y_t, tq)
             # print('otq = %r' % (otq,))
-            notq, _ = self.normalise(otq)
+            notq, z = self.normalise(otq)
+            log_z += numpy.log(z)
             # print('notq = %r' % (notq,))
             q_prime = self.compression_operator_bulk(notq)
             # print('q_prime = %r' % (q_prime,))
             q = q_prime
-        return q
+        return q, log_z
 
 
 class HybridPoissonHMMv2(BaseHMM):
 
     def __init__(self, transition_matrix, signal_matrix):
         super().__init__()
-        self._transition_matrix = ensure_sane_transition_matrix(transition_matrix) # n by n state transition matrix
-        self._csr_transition_matrix = make_csr_matrix_from_dense(self._transition_matrix)
+        if isinstance(transition_matrix, CSRMatrix):
+            self._csr_transition_matrix = transition_matrix
+        else:
+            ensure_sane_transition_matrix(transition_matrix) # n by n state transition matrix
+            self._csr_transition_matrix = make_csr_matrix_from_dense(transition_matrix)
         self._signal_matrix = signal_matrix # K by n
         self._max_k = numpy.shape(signal_matrix)[0] - 1
 
 
     def forward(self, observations, q0):
         observations = numpy.asarray(observations, dtype=numpy.int32)
-        return _forward(
+        q, log_z = _forward(
             self._csr_transition_matrix.indptr,
             self._csr_transition_matrix.cols,
             self._csr_transition_matrix.data,
@@ -267,3 +277,36 @@ class HybridPoissonHMMv2(BaseHMM):
             observations,
             q0,
         )
+        return (numpy.asarray(q), log_z)
+
+
+class FixedGammaHMM:
+    def __init__(self, transition_matrix, signal_matrix, alpha_beta):
+        """
+        :param transition_matrix: dense or sparse shape (n, n) matrix
+        :param signal_matrix: shape (max_k+1, n) matrix
+        :param alpha_beta: shape (r, 2) matrix of Gamma distribution parameters
+            alpha, beta for r preset noise levels.
+        """
+        if isinstance(transition_matrix, CSRMatrix):
+            self._csr_transition_matrix = transition_matrix
+        else:
+            ensure_sane_transition_matrix(transition_matrix) # n by n state transition matrix
+            self._csr_transition_matrix = make_csr_matrix_from_dense(transition_matrix)
+        self._signal_matrix = signal_matrix # K by n
+        self._max_k = numpy.shape(signal_matrix)[0] - 1
+        n = signal_matrix.shape[1]
+        self._alpha_beta = alpha_beta
+
+    def forward(self, observations, p0):
+        observations = numpy.asarray(observations, dtype=numpy.int32)
+        p, log_z = _fixed_gamma_forward_logaddexp(
+            self._csr_transition_matrix.indptr,
+            self._csr_transition_matrix.cols,
+            self._csr_transition_matrix.data,
+            self._signal_matrix,
+            self._alpha_beta,
+            observations,
+            p0,
+        )
+        return (numpy.asarray(p), log_z)

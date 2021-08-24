@@ -123,7 +123,7 @@ def test_single_state_noise_only_model_updates_gamma_posterior(pinned_rng):
         signal_matrix=params.signal_matrix,
     )
 
-    q = model.forward(observations, q0)
+    q, log_z = model.forward(observations, q0)
 
     final_c = q[0, 0]
     final_alpha = q[0, 1]
@@ -167,7 +167,7 @@ def test_two_independent_state_noise_only_model_updates_gamma_posterior(pinned_r
         signal_matrix=params.signal_matrix,
     )
 
-    q = model.forward(observations, q0)
+    q, log_z = model.forward(observations, q0)
 
     final_c_state_0 = q[0, 0]
     final_alpha_state_0 = q[0, 1]
@@ -217,7 +217,7 @@ def test_single_state_mixed_noise_and_signal_updates_gamma_posterior(pinned_rng)
         signal_matrix=params.signal_matrix,
     )
 
-    q = model.forward(observations, q0)
+    q, log_z = model.forward(observations, q0)
 
     final_c = q[0, 0]
     final_alpha = q[0, 1]
@@ -262,7 +262,7 @@ def test_two_independent_state_mixed_noise_and_signal_can_infer_most_probable_st
         signal_matrix=params.signal_matrix,
     )
 
-    q = model.forward(observations, q0)
+    q, log_z = model.forward(observations, q0)
 
     final_c_state_0 = q[0, 0]
     final_c_state_1 = q[1, 0]
@@ -331,7 +331,7 @@ def test_accuracy_of_gamma_mixture_projection():
         signal_matrix=signal_matrix,
     )
 
-    q = model.forward(observations, q0)
+    q, log_z = model.forward(observations, q0)
 
     # We expect all hidden states to have uniform probability, since the
     # transition matrix mixes everything uniformly.

@@ -183,7 +183,7 @@ def make_model(rng, n_submodels):
 def make_problem(rng):
     n_timesteps = uniform_integer(rng, 100, 500)
 
-    n_submodels = uniform_integer(rng, 5, 5)
+    n_submodels = uniform_integer(rng, 5, 50)
     model = make_model(rng, n_submodels)
 
     state_prior = (1.0 / model.n) * numpy.ones((model.n,), dtype=numpy.float64)
@@ -195,7 +195,7 @@ def make_problem(rng):
     beta = 10.0 ** rng.uniform(-1.0, 1.0) # fairly vague.
     alpha = r * beta
     # Sample the noise rate
-    noise_rate = scipy.stats.gamma.rvs(a=alpha, scale=(1.0/beta))
+    noise_rate = scipy.stats.gamma.rvs(a=alpha, scale=(1.0/beta), random_state=rng)
 
     noise_model = PoissonNoiseModel(
         rate=noise_rate,
@@ -203,7 +203,7 @@ def make_problem(rng):
         prior_beta=beta,
     )
 
-    noise = scipy.stats.poisson.rvs(noise_rate, size=n_timesteps)
+    noise = scipy.stats.poisson.rvs(noise_rate, size=n_timesteps, random_state=rng)
     signal = numpy.zeros((n_timesteps,), dtype=int)
     state_trajectory = numpy.zeros((n_timesteps+1, ), dtype=int)
 

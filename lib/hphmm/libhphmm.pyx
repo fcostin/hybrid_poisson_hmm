@@ -1,5 +1,8 @@
 cimport cython
-from libc.math cimport pow, log
+from libc.math cimport pow, log, exp, fmax, INFINITY, isnan
+
+import numpy
+
 
 ctypedef double dtype_t
 ctypedef int int_t
@@ -17,9 +20,6 @@ cdef struct BatchFitResult:
     int status
     size_t iters
     size_t n_issues
-
-
-import numpy
 
 
 @cython.cdivision(True)
@@ -56,7 +56,7 @@ cdef inline dtype_t neg_bin(const int_t k, const dtype_t a, const dtype_t b):
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef const dtype_t[:, :] forward(
+cpdef forward(
         const index_t[:] tr_matrix_indptr, # transition matrix
         const index_t[:] tr_matrix_cols, # transition matrix
         const dtype_t[:] tr_matrix_data, # transition matrix
@@ -64,8 +64,8 @@ cpdef const dtype_t[:, :] forward(
         const int_t[:] observations,
         const dtype_t[:, :] q0):
 
-    cdef index_t n, max_k, max_p, y_t, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj, iota
-    cdef dtype_t alpha, beta, alpha_, beta_, z_i, inv_z_i, z, inv_z
+    cdef index_t n, max_k, max_p, k, w_lo, w_hi, p, np, w, i, j, t, n_obs, start, wj, iota
+    cdef dtype_t alpha, beta, alpha_, beta_, z_i, inv_z_i, z, inv_z, log_z
     cdef dtype_t mixture_expected_rate, mixture_expected_log_rate, c2j
     cdef BatchFitResult result
 
@@ -89,6 +89,8 @@ cpdef const dtype_t[:, :] forward(
     q = numpy.zeros(shape=(n, 3), dtype=numpy.float64)
 
     q[:, :] = q0
+
+    log_z = 0.0
 
     for t in range(n_obs):
         k = observations[t]
@@ -176,9 +178,218 @@ cpdef const dtype_t[:, :] forward(
             z += q[i, 0]
         assert z > 0.0
         inv_z = 1.0 / z
+        log_z += log(z)
         for i in range(n):
             q[i, 0] = inv_z * q[i, 0]
-    return q
+
+    return (q, log_z)
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef fixed_gamma_forward(
+        const index_t[:] tr_matrix_indptr, # transition matrix
+        const index_t[:] tr_matrix_cols, # transition matrix
+        const dtype_t[:] tr_matrix_data, # transition matrix
+        const dtype_t[:, :] s_matrix, # signal matrix. shape (k_max+1, n)
+        const dtype_t[:, :] alpha_beta, # fixed Gamma params [alpha, beta]. shape (r, 2)
+        const int_t[:] observations,
+        const dtype_t[:, :] p0): # shape (r, n)
+
+    cdef index_t r, n, max_k, w_size, k, w_lo, w_hi, w, i, j, rho, t, n_obs, iota
+    cdef dtype_t acc, z, inv_z, log_z
+
+    cdef dtype_t[:, :] p
+    cdef dtype_t[:, :] basis
+    cdef dtype_t[:, :] neg_bin_lookup
+
+    r = p0.shape[0]
+    n = p0.shape[1]
+    n_obs = observations.shape[0]
+    max_k = s_matrix.shape[0] - 1
+
+    # Some of the work buffers dimensions need to have capacity proportional
+    # to the observed event count + 1
+    w_size = max(observations) + 1
+
+    # Allocate work buffers.
+    neg_bin_lookup = numpy.zeros((r, w_size), dtype=numpy.float64)
+    basis = numpy.zeros((r, n), dtype=numpy.float64)
+    p = numpy.zeros(shape=(r, n), dtype=numpy.float64)
+
+    # Precompute neg_bin(w, a_r, b_r) for all w
+    for rho in range(r):
+        for w in range(w_size):
+            neg_bin_lookup[rho, w] = neg_bin(w, alpha_beta[rho, 0], alpha_beta[rho, 1])
+
+    p[:, :] = p0
+
+    log_z = 0.0
+
+    for t in range(n_obs):
+        k = observations[t]
+
+        # Discrete convolution of signal with noise wrt observation k.
+        # Signal matrix[k-w] is zero unless 0 <= k-w <= max_k
+        # Neg-Bin(w, alpha, beta) is zero unless w >= 0
+        # equivalently:
+        # 0 <= w
+        # - max_k+ k <= w
+        # w <= k
+        w_lo = max(0, -max_k + k)
+        w_hi = k + 1
+
+        # i : destination state index
+        for rho in range(r):
+            # condition on observation
+            for i in range(n):
+                acc = 0.0
+                for w in range(w_lo, w_hi):
+                    acc += s_matrix[k - w][i] * neg_bin_lookup[rho, w]
+                basis[rho, i] = acc * p[rho, i]
+
+            # transition
+            for i in range(n):
+                acc = 0.0
+                for iota in range(tr_matrix_indptr[i], tr_matrix_indptr[i + 1]):
+                    j = tr_matrix_cols[iota]
+                    acc += tr_matrix_data[iota] * basis[rho, j]
+                p[rho, i] = acc
+
+        # Normalise
+        z = 0.0
+        for rho in range(r):
+            for i in range(n):
+                z += p[rho, i]
+        inv_z = 1.0 / z
+        log_z += log(z)
+        for rho in range(r):
+            for i in range(n):
+                p[rho, i] = inv_z * p[rho, i]
+
+    return (p, log_z)
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef fixed_gamma_forward_logaddexp(
+        const index_t[:] tr_matrix_indptr, # transition matrix
+        const index_t[:] tr_matrix_cols, # transition matrix
+        const dtype_t[:] tr_matrix_data, # transition matrix
+        const dtype_t[:, :] s_matrix, # signal matrix. shape (k_max+1, n)
+        const dtype_t[:, :] alpha_beta, # fixed Gamma params [alpha, beta]. shape (r, 2)
+        const int_t[:] observations,
+        const dtype_t[:, :] p0): # shape (r, n)
+
+    cdef index_t r, n, max_k, w_size, k, w_lo, w_hi, w, i, j, rho, t, n_obs, iota, n_nonzeros
+    cdef dtype_t acc, acc_max, log_z, total_log_z
+
+    cdef dtype_t[:] log_tr_matrix_data
+    cdef dtype_t[:, :] log_p
+    cdef dtype_t[:, :] basis
+    cdef dtype_t[:, :] neg_bin_lookup
+
+    n_nonzeros = tr_matrix_data.shape[0]
+    r = p0.shape[0]
+    n = p0.shape[1]
+    n_obs = observations.shape[0]
+    max_k = s_matrix.shape[0] - 1
+
+    # Some of the work buffers dimensions need to have capacity proportional
+    # to the observed event count + 1
+    w_size = max(observations) + 1
+
+    # Allocate work buffers.
+
+    log_tr_matrix_data = numpy.zeros(shape=n_nonzeros, dtype=numpy.float64)
+    log_p = numpy.zeros(shape=(r, n), dtype=numpy.float64)
+    basis = numpy.zeros((r, n), dtype=numpy.float64)
+    neg_bin_lookup = numpy.zeros((r, w_size), dtype=numpy.float64)
+
+    # Precompute log of transition matrix coefficients
+    for i in range(n_nonzeros):
+        log_tr_matrix_data[i] = log(tr_matrix_data[i])
+
+    # Precompute neg_bin(w, a_r, b_r) for all w
+    for rho in range(r):
+        for w in range(w_size):
+            neg_bin_lookup[rho, w] = neg_bin(w, alpha_beta[rho, 0], alpha_beta[rho, 1])
+
+    for rho in range(r):
+        for i in range(n):
+            log_p[rho, i] = log(p0[rho, i])
+
+    total_log_z = 0.0
+
+    for t in range(n_obs):
+        k = observations[t]
+
+        # Discrete convolution of signal with noise wrt observation k.
+        # Signal matrix[k-w] is zero unless 0 <= k-w <= max_k
+        # Neg-Bin(w, alpha, beta) is zero unless w >= 0
+        # equivalently:
+        # 0 <= w
+        # - max_k+ k <= w
+        # w <= k
+        w_lo = max(0, -max_k + k)
+        w_hi = k + 1
+
+        # i : source state index
+        for rho in range(r):
+            # condition on observation
+            for i in range(n):
+                acc = 0.0
+                for w in range(w_lo, w_hi):
+                    acc += s_matrix[k - w][i] * neg_bin_lookup[rho, w]
+                if acc > 0.0:
+                    basis[rho, i] = log(acc) + log_p[rho, i]
+                else:
+                    basis[rho, i] = -INFINITY
+                # assert not isnan(basis[rho, i]), "basis[rho=%d, i=%d] is nan. note acc=%r, log_p=%r" % (rho, i, acc, log_p[rho, i])
+        # i : destination state index
+        for rho in range(r):
+            # apply transition
+            for i in range(n):
+                # matrix vector product of transition_matrix on basis
+                # in logspace (logaddexp).
+                acc_max = -INFINITY
+                for iota in range(tr_matrix_indptr[i], tr_matrix_indptr[i + 1]):
+                    j = tr_matrix_cols[iota]
+                    acc_max = fmax(acc_max, log_tr_matrix_data[iota] + basis[rho, j])
+                if acc_max <= -INFINITY:
+                    log_p[rho, i] = -INFINITY
+                else:
+                    acc = 0.0
+                    for iota in range(tr_matrix_indptr[i], tr_matrix_indptr[i + 1]):
+                        j = tr_matrix_cols[iota]
+                        acc += exp(log_tr_matrix_data[iota] + basis[rho, j] - acc_max)
+                    # assert not isnan(acc), "acc is nan. rho=%r, i=%r, acc_max=%r" % (rho, i, acc_max)
+                    # assert not isnan(log_p[rho, i]), "log_p[rho=%d, i=%d] is nan" % (rho, i)
+                    log_p[rho, i] = log(acc) + acc_max
+                # assert not isnan(log_p[rho, i]), "log_p[rho=%d, i=%d] is nan. note acc=%r, acc_max=%r" % (rho, i, acc, acc_max)
+
+        # Normalise
+        # in logspace (logaddexp)
+        acc_max = -INFINITY
+        for rho in range(r):
+            for i in range(n):
+                # assert not isnan(log_p[rho, i]), "log_p[rho=%d, i=%d] is nan" % (rho, i)
+                acc_max = fmax(acc_max, log_p[rho, i])
+        log_z = 0.0
+        for rho in range(r):
+            for i in range(n):
+                log_z += exp(log_p[rho, i] - acc_max)
+        log_z = log(log_z) + acc_max
+        assert log_z > -INFINITY, repr(numpy.asarray(log_p))
+        total_log_z += log_z
+        for rho in range(r):
+            for i in range(n):
+                log_p[rho, i] = log_p[rho, i] - log_z
+                # assert not isnan(log_p[rho, i]), "log_p[rho=%d, i=%d] is nan" % (rho, i)
+
+    return (numpy.exp(log_p), total_log_z)
 
 
 @cython.cdivision(True)
