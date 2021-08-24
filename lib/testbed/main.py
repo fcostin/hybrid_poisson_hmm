@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import numpy
 import numpy.random
 import random
@@ -99,6 +100,40 @@ class FGHMM:
         return fghmm, p0
 
 
+class Oracle:
+    def __init__(self):
+        pass
+
+    def __repr__(self):
+        return 'Oracle()'
+
+    def prepare(self, problem):
+        base_model = problem.model
+        base_n = problem.model.n
+
+        # Cheat and look at the true noise level used for this problem
+        # hack: assume we got many observations of exactly that rate
+        r = 1 # we consider one option for noise level: the true noise level
+        beta = 1.0e9
+        alpha = problem.noise_model.rate * beta
+
+        alpha_beta = numpy.zeros((r, 2), dtype=numpy.float64)
+        alpha_beta[0, 0] = alpha
+        alpha_beta[0, 1] = beta
+
+        # Cheat and look at the first state in the trajectory.
+        # Concentrate all mass in it
+        first_true_state = problem.state_trajectory[0]
+        p0 = numpy.zeros((r, base_n), dtype=numpy.float64)
+        p0[0, first_true_state] = 1.0
+
+        fghmm = FixedGammaHMM(
+            transition_matrix=base_model.transition_matrix,
+            signal_matrix=base_model.signal_matrix,
+            alpha_beta=alpha_beta,
+        )
+        return fghmm, p0
+
 
 def main():
     args = parse_args()
@@ -116,9 +151,11 @@ def main():
 
     method_factories = [
         HPMM(),
+        FGHMM(r=1),
         FGHMM(r=5),
         FGHMM(r=10),
-        FGHMM(r=20),
+        # FGHMM(r=20),
+        Oracle(),
     ]
 
     n_problems = args.n_problems
@@ -133,6 +170,7 @@ def main():
     n_methods = len(method_factories)
 
     log_z_by_problem_method = numpy.zeros((n_problems, n_methods), dtype=numpy.float64)
+    time_by_problem_method = numpy.zeros((n_problems, n_methods), dtype=numpy.float64)
 
     print('running competing methods on synthetic problems')
     method_j = 0
@@ -140,16 +178,27 @@ def main():
         for problem_i in range(n_problems):
             problem = problems[problem_i]
             model, p0 = method_factory.prepare(problem)
+            t0 = datetime.datetime.now()
             p, log_z = model.forward(problem.observations, p0)
-            print('method %12r\tproblem %d\tlog_z = %r' % (method_factory, problem_i, log_z, ))
+            t1 = datetime.datetime.now()
+            delta_t = (t1 - t0).total_seconds()
+            print('method %12r\tproblem %d\tlog_z = %r\tdelta_t = %.4f' % (method_factory, problem_i, log_z, delta_t))
             log_z_by_problem_method[problem_i, method_j] = log_z
+            time_by_problem_method[problem_i, method_j] = delta_t
         method_j += 1
 
-    print('results:')
+    print('results (log-prob):')
     colheaders = '\t'.join('%12s' % (repr(f), ) for f in method_factories)
     print(colheaders)
     for i in range(n_problems):
         line = '\t'.join('%12.1f' % (log_z_by_problem_method[i, j], ) for j in range(n_methods))
+        print(line)
+
+    print('results (time):')
+    colheaders = '\t'.join('%12s' % (repr(f), ) for f in method_factories)
+    print(colheaders)
+    for i in range(n_problems):
+        line = '\t'.join('%2.4f' % (time_by_problem_method[i, j], ) for j in range(n_methods))
         print(line)
 
 
