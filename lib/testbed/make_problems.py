@@ -183,7 +183,7 @@ def make_model(rng, n_submodels):
 def make_problem(rng):
     n_timesteps = uniform_integer(rng, 100, 500)
 
-    n_submodels = uniform_integer(rng, 5, 50)
+    n_submodels = uniform_integer(rng, 50, 500)
     model = make_model(rng, n_submodels)
 
     state_prior = (1.0 / model.n) * numpy.ones((model.n,), dtype=numpy.float64)

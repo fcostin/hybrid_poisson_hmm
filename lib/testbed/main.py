@@ -44,7 +44,7 @@ def main():
     seed = parse_seedstring(seedstring)
     rng = numpy.random.default_rng(seed)
 
-    n_problems = 100
+    n_problems = 20
     problem = {}
 
     print('preparing synthetic problems')
@@ -53,7 +53,7 @@ def main():
         problem[i] = make_problem(rng)
     print('done')
 
-    fghmm_rs = (1, 5, 10) # 10, 20)
+    fghmm_rs = (5, 10, 20)
 
     method_names = ['hphmm'] + ['fghmm/%d' % (r, ) for r in fghmm_rs]
     n_methods = 1 + len(fghmm_rs)
