@@ -383,7 +383,7 @@ The plan is to approximate this mixture of Gamma distributions with a single app
 \frac{1}{Z}
 \sum_{s^{\prime} \in S}
 \sum_{s \in S}
-\sum_{w \in \natural_{\geq 0}}
+\sum_{w \in \nonnegint}
 c_{s^{\prime}, s, w, k, t}
 \int_{\lambda}
 \gammad(\lambda^{\prime} ; \alpha_{s,t} + w, \beta_{s,t} + 1)
@@ -394,7 +394,7 @@ Each integral of a Gamma distribution evaluates to one, hence we define
 Z \coloneqq 
 \sum_{s^{\prime} \in S}
 \sum_{s \in S}
-\sum_{w \in \natural_{\geq 0}}
+\sum_{w \in \nonnegint}
 c_{s^{\prime}, s, w, k, t} \, .
 \end{equation}
 Again simplifying notation, define the non-negative real valued tensor $c^{\prime}_{s^{\prime}, s, w, k, t}$ as
@@ -406,7 +406,7 @@ Similarly, for each $x_t=s^{\prime}$, we want to recover an approximation for th
 \begin{equation}
 \frac{1}{Z_{t,s^{\prime}}}
 \sum_{s \in S}
-\sum_{w \in \natural_{\geq 0}}
+\sum_{w \in \nonnegint}
 c^{\prime}_{s^{\prime}, s, w, k, t}
 \int_{\lambda}
 \gammad(\lambda^{\prime} ; \alpha_{s,t} + w, \beta_{s,t} + 1)
@@ -417,7 +417,7 @@ Hence we normalise once more by defining
 Z_{t,s^{\prime}}
 \coloneqq
 \sum_{s \in S}
-\sum_{w \in \natural_{\geq 0}}
+\sum_{w \in \nonnegint}
 c^{\prime}_{s^{\prime}, s, w, k, t}
 \end{equation}
 and defining another non-negative real valued tensor $c^{\prime\prime}_{s^{\prime}, s, w, k, t}$ as
@@ -440,7 +440,8 @@ Let $p(\lambda)$ be a finite mixture of Gamma distributions,
 \begin{equation}
 p(\lambda) = \sum_j c_j \gammad(\lambda \mid \theta_j)
 \end{equation}
-such that $\sum_j c_j = 1$, $c_j \geq 0$ for all $j$, $\theta_j = (\alpha_j, \beta_j)$ with $\alpha_j > 0$, $\beta_j > 0$, and $q(\lambda \mid \theta)$ be a single Gamma distribution
+such that $\sum_j c_j = 1$, $c_j \geq 0$ for all $j$, $\theta_j = (\alpha_j, \beta_j)$ with $\alpha_j > 0$, $\beta_j > 0$.
+Let $q(\lambda \mid \theta)$ be a Gamma distribution
 \begin{equation}
 q(\lambda \mid \theta ) = \gammad(\lambda \mid \theta) \, .
 \end{equation}
