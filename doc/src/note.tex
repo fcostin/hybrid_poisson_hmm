@@ -584,6 +584,92 @@ Apart from a lot of loose ends to check edge cases and give a convincing argumen
 \end{proof}
 
 
+\begin{thm}
+Let $c_j \geq 0, \alpha_j > 0, \beta_j > 0$ be real numbers where $j = 1, \ldots n$ for some integer $n \geq 1$. Then there exist unique real numbers $\alpha^{*} > 0, \beta^{*} > 0$ satisfying the constraints
+\begin{align}
+\frac{\alpha^*}{\beta^*}
+& = \sum_j c_j \left( \frac{\alpha_j}{\beta_j} \right) \\
+\psi(\alpha^*) - \log(\beta^*)
+& = \sum_j c_j \left( \psi(\alpha_j) - \log(\beta_j) \right)
+\end{align}
+where $\psi$ denotes the digamma function.
+\end{thm}
+\begin{proof}
+Reduce the problem to a single equation for $\alpha^*$ by taking the logarithm of the first constraint and eliminating the $\log(\beta^*)$ term in the second constraint, to give:
+\begin{equation}
+\psi(\alpha^*) - \log(\alpha^*) + \log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right) = \sum_j c_j \left( \psi(\alpha_j) - \log(\beta_j) \right) \, . \nonumber
+\end{equation}
+Define $f : (0, \infty) \rightarrow \real$ by $f(\alpha) = \log(\alpha) - \psi(\alpha)$. From inequality 2.2 of~\citet*{alzer1997some}, we have
+\begin{equation}
+\frac{1}{2\alpha} < f(\alpha) < \frac{1}{\alpha} \qquad (\alpha>0)\, . \label{eqn:fbounds}
+\end{equation}
+Using Theorem 1 from~\citet*{alzer1997some}, we have that $f$ is strictly completely monotonic on $(0, \infty)$. In particular $f$ is invertible on $(0, \infty)$.
+
+In terms of $f$ the equation for $\alpha^*$ is equivalently expressed as
+\begin{equation}
+f(\alpha^*) = 
+\sum_j c_j \left( \log(\beta_j) - \psi(\alpha_j) \right)
++ \log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right) \, \label{eqn:fconstraint}
+\end{equation}
+In order to define $\alpha^*$ using $f^{-1}$, we need to demonstrate that that the right hand side of equation~\ref{eqn:fconstraint} is strictly positive so it falls inside the domain of $f^{-1}$. As the logarithm is concave on $(0, \infty)$, by Jensen's inequality we have the bound
+\begin{equation}
+\log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right)
+\geq
+\sum_j c_j \left( \log\left(\frac{\alpha_j}{\beta_j}\right) \right) \, . \label{eqn:logjensenbound}
+\end{equation}
+
+Combining the bounds~\ref{eqn:fbounds},~\ref{eqn:logjensenbound} and the definitions of the $c_j$ and $\alpha_j$ shows that
+\begin{align}
+& \sum_j c_j \left( \log(\beta_j) - \psi(\alpha_j) \right)
++ \log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right) \nonumber \\
+= &
+\sum_j c_j \left( \log\left(\frac{\beta_j}{\alpha_j}\right) + \log(\alpha_j) - \psi(\alpha_j) \right)
++ \log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right) \nonumber \\
+> & 
+\sum_j c_j \left( \log\left(\frac{\beta_j}{\alpha_j}\right) + \frac{1}{2\alpha_j} \right)
++ \log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right) \nonumber \\
+= &
+\sum_j \frac{c_j}{2 \alpha_j} - \sum_j c_j \left( \log\left(\frac{\alpha_j}{\beta_j}\right) \right)
++ \log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right) \nonumber \\
+\geq &
+\sum_j \frac{c_j}{2 \alpha_j}
+> 0 \; . \nonumber
+\end{align}
+Hence there exists a unique $\alpha^* > 0$ such that
+\begin{equation}
+\alpha^* = f^{-1} \left(
+\sum_j c_j \left( \log(\beta_j) - \psi(\alpha_j) \right)
++ \log\left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right)
+\right) \, . \nonumber
+\end{equation}
+Finally, substituting $\alpha^*$ into the first constraint from the statement of the theorem shows that $\beta^*$ must take the unique value
+\begin{equation}
+\beta^{*} = \alpha^{*} \left( \sum_j c_j \left(\frac{\alpha_j}{\beta_j}\right) \right)^{-1}
+\end{equation}
+which, using the definitions of $\alpha^*$, $\alpha_j$, $\beta_j$ and $c_j$, we conclude $\beta^* > 0$.
+\end{proof}
+
+\subsection{Numerical Approximation}
+
+In practice, in order to compute the parameters $(\alpha^*, \beta^*)$ of a Gamma distribution that best approximates a mixture of Gamma distributions, we need to compute the inverse of $f(\alpha) = \log(\alpha) - \psi(\alpha) = y$ for some $y > 0$.
+
+Minka Appendix C~\citep{minka2000estimating} describes how to approximately invert the digamma function $\psi$ using a good initial guess followed by five iterations of the Newton-Raphson method. We tried a similar scheme to numerically invert $f$ using the Newton-Raphson method, but encountered some difficulties. During each iteration of Newton-Raphson we update the current approximation $x_n$ of the root $x$ of $f(x) - y = 0$ with a new approximation $x_{n+1}$ defined by
+\begin{equation}
+x_{n+1} = x_n - \frac{f(x_n)}{f^{\prime}(x_n)}
+\end{equation}
+
+However, when $x_n > 0$ is close to zero, due to the convexity of $f$, the Newton-Raphson iteration can sometimes produce a new value of $x_{n+1} < 0$, on the other side of the singularity of $f(x)$ at $x=0$, which causes iterations to diverge. One ad-hoc way to mitigate this problem is to check if a proposed $x_{n+1}$ is negative, and if so, replace it with a strictly positive value such as $x_n / 2$.
+
+A more satisfactory method is to replace the use of Newton-Raphson with Halley's method, where the iterations are defined by:
+\begin{equation}
+x_{n+1}
+=
+x_n - \frac{
+2 f(x_n) f^{\prime}(x_n)
+}{
+2 \left( f^{\prime}(x_n) \right)^2 - f(x_n) f^{\prime \prime}(x_n)} \nonumber
+\end{equation}
+In practice, empirically we find two iterations of Halley's method suffices for rough accuracy, using an initial guess of $x_0 \approx 0.6548 y^{-0.9256}$. When evaluating $f$ and its two derivatives $f^{\prime}$ and $f^{\prime\prime}$, the $\psi$, $\psi^{\prime}$ and $\psi^{\prime\prime}$ terms may be evaluated approximately using a series approximation for $\psi$. Algorithm AS 103~\citet{bernardo1976algorithm} can be used to approximate $\psi$. We based our approximation of $\psi$ on the code given by Johnson~\citep{JohnsonDigammaC}.
 
 \subsection{todo}
 
