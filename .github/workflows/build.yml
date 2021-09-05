@@ -34,6 +34,12 @@ jobs:
 
     - name: compare_algorithms
       shell: bash
+      # TODO setup.py must be named setup.py to work with pip.
+      # Either merge both libraries into a single library or
+      # restructure the repo layout to allow all setup.py files
+      # to be named setup.py .
       run: |
+        python ./setup_gamma_approx.py develop
+        python ./setup_hphmm.py develop
         python3 -m lib.testbed.main --seed 0xdecaff --n-problems 30
 
