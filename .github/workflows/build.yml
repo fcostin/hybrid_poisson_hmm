@@ -18,7 +18,7 @@ jobs:
     - name: dependencies
       shell: bash
       run: |
-        python -mpip pip install -r requirements.txt
+        python -mpip install -r requirements.txt
     - name: build
       shell: bash
       run: |
