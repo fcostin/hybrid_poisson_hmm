@@ -32,12 +32,12 @@ def parse_seedstring(seedstring):
     return int(seedstring, base=16)
 
 
-class HPMM:
+class HPHMM:
     def __init__(self):
         pass
 
     def __repr__(self):
-        return 'HPMM()'
+        return 'HPHMM()'
 
     def prepare(self, problem):
         hphmm = HybridPoissonHMM(
@@ -150,11 +150,11 @@ def main():
     rng = numpy.random.default_rng(seed)
 
     method_factories = [
-        HPMM(),
+        HPHMM(),
         FGHMM(r=1),
         FGHMM(r=5),
         FGHMM(r=10),
-        # FGHMM(r=20),
+        FGHMM(r=20),
         Oracle(),
     ]
 
