@@ -26,7 +26,7 @@ jobs:
     - name: test
       shell: bash
       run: |
-        python -m pytest -vv ib
+        python -m pytest -vv lib
     - name: test
       shell: compare_algorithms
       run: |
