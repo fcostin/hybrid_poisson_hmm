@@ -22,7 +22,7 @@ jobs:
     - name: build
       shell: bash
       run: |
-        make lib
+        make libs
     - name: test
       shell: bash
       run: |
