@@ -12,23 +12,28 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
+
     - uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+
     - name: dependencies
       shell: bash
       run: |
         python -mpip install -r requirements.txt
+
     - name: build
       shell: bash
       run: |
         make libs
+
     - name: test
       shell: bash
       run: |
         python -m pytest -vv lib
-    - name: test
-      shell: compare_algorithms
+
+    - name: compare_algorithms
+      shell: bash
       run: |
         python3 -m lib.testbed.main --seed 0xdecaff --n-problems 30
 
