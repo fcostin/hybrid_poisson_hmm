@@ -102,7 +102,7 @@ We compare the following algorithms:
 
 1.  `HPHMM` -- the approximation scheme where we assume the posterior distribution for the noise rate, conditioned on the hidden state, is approximated as a Gamma distribution. This model requires `3 * n` parameters per belief state vector.
 
-2.  `FGHMM(r)` -- a simple grid approximation scheme where we approximate the unknown noise rate by sampling `r` fixed noise rate values from a uniform grid across the prior distribution for the noise rate. We then define a model consisting of the disjoint union of `r` copies of the HMM, each with one of the fixed `r` discreted noise rates. This model requires `r * n` parameters per belief state vector.
+2.  `FGHMM(r)` -- a simple grid approximation scheme where we approximate the unknown noise rate by sampling `r` fixed noise rate values from a uniform grid across the prior distribution for the noise rate. We then define a model consisting of the disjoint union of `r` copies of the HMM, each with one of the fixed `r` noise rates. This model requires `r * n` parameters per belief state vector.
 
 3.  `Oracle` -- to define a "best-possible" benchmark, we compare against an Oracle HMM algorithm that is allowed to cheat and use the true noise rate as a parameter, so there is no need to infer the noise rate. This model is implemented as an `FGHMM(r=1)` model. requires `n` parameters per belief state vector.
 
