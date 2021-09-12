@@ -257,11 +257,9 @@ def transpose_csr_matrix(a: CSRMatrix):
     k = 0
     for r in range(n):
         indptr[r] = k
-        if r < rows[k]:
-            continue
         while k < nonzeros and r == rows[k]:
             k += 1
-    indptr[n-1] = k
+    indptr[n] = k
 
     return CSRMatrix(
         indptr=indptr,

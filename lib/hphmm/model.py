@@ -62,7 +62,7 @@ class CSRMatrix(typing.NamedTuple):
     data: numpy.typing.NDArray
 
 
-def make_csr_matrix_from_dense(a):
+def make_csr_matrix_from_dense(a) -> CSRMatrix:
     n, m = a.shape
     nonzeros = 0
     for i in range(n):
